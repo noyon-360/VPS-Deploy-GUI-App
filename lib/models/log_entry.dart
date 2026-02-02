@@ -16,13 +16,15 @@ class LogEntry {
   Color get color {
     switch (type) {
       case LogType.command:
-        return const Color(0xFF61AFEF); // Blue
+        return const Color(0xFF61AFEF); // Soft Cyan/Blue for commands
       case LogType.stdout:
-        return const Color(0xFFABB2BF); // Light Grey
+        return Colors.white.withValues(alpha: 0.9); // Bright white for output
       case LogType.stderr:
-        return const Color(0xFFE06C75); // Red
+        return const Color(0xFFE06C75); // Soft red for errors
       case LogType.info:
-        return const Color(0xFF98C379); // Green
+        return Colors.white.withValues(
+          alpha: 0.5,
+        ); // Dimmed white for system info
     }
   }
 }

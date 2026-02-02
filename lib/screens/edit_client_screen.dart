@@ -310,119 +310,118 @@ class _EditClientScreenState extends State<EditClientScreen> {
                                   ),
                                 ),
 
-                              if (provider.isVerified &&
-                                  (provider.runningApps.isNotEmpty ||
-                                      provider.activeSites.isNotEmpty))
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (provider.runningApps.isNotEmpty) ...[
-                                        Text(
-                                          'Running PM2 Apps:',
-                                          style: TextStyle(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.7,
-                                            ),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 4,
-                                          children: provider.runningApps
-                                              .map(
-                                                (app) => Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 4,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.green
-                                                        .withValues(alpha: 0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                    border: Border.all(
-                                                      color: Colors.green
-                                                          .withValues(
-                                                            alpha: 0.3,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    app,
-                                                    style: const TextStyle(
-                                                      fontSize: 11,
-                                                      color: Colors.greenAccent,
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                              .toList(),
-                                        ),
-                                        const SizedBox(height: 12),
-                                      ],
-                                      if (provider.activeSites.isNotEmpty) ...[
-                                        Text(
-                                          'Active Nginx Sites:',
-                                          style: TextStyle(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.7,
-                                            ),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 4,
-                                          children: provider.activeSites
-                                              .map(
-                                                (site) => Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 4,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.blue
-                                                        .withValues(alpha: 0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                    border: Border.all(
-                                                      color: Colors.blue
-                                                          .withValues(
-                                                            alpha: 0.3,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    site,
-                                                    style: const TextStyle(
-                                                      fontSize: 11,
-                                                      color: Colors
-                                                          .lightBlueAccent,
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                              .toList(),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-
+                              // if (provider.isVerified &&
+                              //     (provider.runningApps.isNotEmpty ||
+                              //         provider.activeSites.isNotEmpty))
+                              //   Padding(
+                              //     padding: const EdgeInsets.only(top: 16.0),
+                              //     child: Column(
+                              //       crossAxisAlignment:
+                              //           CrossAxisAlignment.start,
+                              //       children: [
+                              //         if (provider.runningApps.isNotEmpty) ...[
+                              //           Text(
+                              //             'Running PM2 Apps:',
+                              //             style: TextStyle(
+                              //               color: Colors.white.withValues(
+                              //                 alpha: 0.7,
+                              //               ),
+                              //               fontSize: 12,
+                              //               fontWeight: FontWeight.bold,
+                              //             ),
+                              //           ),
+                              //           const SizedBox(height: 4),
+                              //           Wrap(
+                              //             spacing: 8,
+                              //             runSpacing: 4,
+                              //             children: provider.runningApps
+                              //                 .map(
+                              //                   (app) => Container(
+                              //                     padding:
+                              //                         const EdgeInsets.symmetric(
+                              //                           horizontal: 8,
+                              //                           vertical: 4,
+                              //                         ),
+                              //                     decoration: BoxDecoration(
+                              //                       color: Colors.green
+                              //                           .withValues(alpha: 0.1),
+                              //                       borderRadius:
+                              //                           BorderRadius.circular(
+                              //                             8,
+                              //                           ),
+                              //                       border: Border.all(
+                              //                         color: Colors.green
+                              //                             .withValues(
+                              //                               alpha: 0.3,
+                              //                             ),
+                              //                       ),
+                              //                     ),
+                              //                     child: Text(
+                              //                       app,
+                              //                       style: const TextStyle(
+                              //                         fontSize: 11,
+                              //                         color: Colors.greenAccent,
+                              //                       ),
+                              //                     ),
+                              //                   ),
+                              //                 )
+                              //                 .toList(),
+                              //           ),
+                              //           const SizedBox(height: 12),
+                              //         ],
+                              //         if (provider.activeSites.isNotEmpty) ...[
+                              //           Text(
+                              //             'Active Nginx Sites:',
+                              //             style: TextStyle(
+                              //               color: Colors.white.withValues(
+                              //                 alpha: 0.7,
+                              //               ),
+                              //               fontSize: 12,
+                              //               fontWeight: FontWeight.bold,
+                              //             ),
+                              //           ),
+                              //           const SizedBox(height: 4),
+                              //           Wrap(
+                              //             spacing: 8,
+                              //             runSpacing: 4,
+                              //             children: provider.activeSites
+                              //                 .map(
+                              //                   (site) => Container(
+                              //                     padding:
+                              //                         const EdgeInsets.symmetric(
+                              //                           horizontal: 8,
+                              //                           vertical: 4,
+                              //                         ),
+                              //                     decoration: BoxDecoration(
+                              //                       color: Colors.blue
+                              //                           .withValues(alpha: 0.1),
+                              //                       borderRadius:
+                              //                           BorderRadius.circular(
+                              //                             8,
+                              //                           ),
+                              //                       border: Border.all(
+                              //                         color: Colors.blue
+                              //                             .withValues(
+                              //                               alpha: 0.3,
+                              //                             ),
+                              //                       ),
+                              //                     ),
+                              //                     child: Text(
+                              //                       site,
+                              //                       style: const TextStyle(
+                              //                         fontSize: 11,
+                              //                         color: Colors
+                              //                             .lightBlueAccent,
+                              //                       ),
+                              //                     ),
+                              //                   ),
+                              //                 )
+                              //                 .toList(),
+                              //           ),
+                              //         ],
+                              //       ],
+                              //     ),
+                              //   ),
                               if (provider.isVerified) ...[
                                 _buildSectionHeader(
                                   'General Information',
@@ -596,7 +595,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                   ),
                 ),
                 _buildResizeHandle(provider, isLeft: false),
-                _buildTerminalView(provider),
+                LogConsolePanel(provider: provider),
               ],
             ),
           );
@@ -1093,10 +1092,15 @@ class _EditClientScreenState extends State<EditClientScreen> {
       ),
     );
   }
+}
 
-  Widget _buildTerminalView(EditClientProvider provider) {
-    final commandController = TextEditingController();
+class LogConsolePanel extends StatelessWidget {
+  final EditClientProvider provider;
 
+  const LogConsolePanel({super.key, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOutCubic,
@@ -1116,6 +1120,14 @@ class _EditClientScreenState extends State<EditClientScreen> {
       ),
       child: Column(
         children: [
+          // Loading Indicator
+          if (provider.isBusy)
+            const LinearProgressIndicator(
+              minHeight: 2,
+              backgroundColor: Colors.transparent,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+            ),
+
           // Header
           InkWell(
             onTap: () => provider.toggleTerminal(),
@@ -1149,7 +1161,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Terminal',
+                            'Console Logs',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.9),
                               fontWeight: FontWeight.w500,
@@ -1161,7 +1173,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                           icon: const Icon(Icons.copy_all, size: 16),
                           color: Colors.white.withValues(alpha: 0.5),
                           onPressed: () => provider.copyLogsToClipboard(),
-                          tooltip: 'Copy All',
+                          tooltip: 'Copy Logs',
                           constraints: const BoxConstraints(),
                           padding: EdgeInsets.zero,
                         ),
@@ -1182,149 +1194,46 @@ class _EditClientScreenState extends State<EditClientScreen> {
             ),
           ),
 
-          // Terminal Body
+          // Log Content
           if (provider.isTerminalVisible)
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth < 200) return const SizedBox();
-                  return Column(
-                    children: [
-                      // Logs Display
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          color: const Color(0xFF1E1E1E),
-                          child: provider.logs.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    'Terminal ready. Type a command below.',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      fontSize: 12,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  controller: provider.logScrollController,
-                                  itemCount: provider.logs.length,
-                                  itemBuilder: (context, index) {
-                                    final log = provider.logs[index];
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 2),
-                                      child: SelectableText.rich(
-                                        TextSpan(
-                                          children: [
-                                            TextSpan(
-                                              text:
-                                                  '[${log.formattedTimestamp}] ',
-                                              style: TextStyle(
-                                                fontFamily: 'Consolas',
-                                                fontSize: 11,
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.4,
-                                                ),
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text: log.message,
-                                              style: TextStyle(
-                                                fontFamily: 'Consolas',
-                                                fontSize: 12,
-                                                color: log.color,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                        ),
-                      ),
-
-                      // Command Input
-                      if (provider.isVerified)
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            border: Border(
-                              top: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.1),
-                              ),
-                            ),
-                          ),
-                          child: Row(
+              child: Container(
+                color: const Color(0xFF1E1E1E),
+                child: SelectionArea(
+                  child: ListView.builder(
+                    controller: provider.logScrollController,
+                    padding: const EdgeInsets.all(8),
+                    itemCount: provider.logs.length,
+                    itemBuilder: (context, index) {
+                      final log = provider.logs[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text.rich(
+                          TextSpan(
                             children: [
-                              Icon(
-                                Icons.chevron_right,
-                                size: 16,
-                                color: Colors.greenAccent.withValues(
-                                  alpha: 0.7,
+                              TextSpan(
+                                text: '[${log.formattedTimestamp}] ',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                  fontFamily: 'Consolas',
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: commandController,
-                                  style: const TextStyle(
-                                    fontFamily: 'Consolas',
-                                    fontSize: 12,
-                                    color: Color(0xFFCCCCCC),
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter command...',
-                                    hintStyle: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      fontFamily: 'Consolas',
-                                    ),
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                  onSubmitted: (cmd) {
-                                    if (cmd.trim().isNotEmpty) {
-                                      provider.executeCommand(
-                                        _createTempConfig(),
-                                        cmd,
-                                      );
-                                      commandController.clear();
-                                    }
-                                  },
+                              TextSpan(
+                                text: log.message,
+                                style: TextStyle(
+                                  color: log.color,
+                                  fontSize: 13,
+                                  fontFamily: 'Consolas',
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.send, size: 16),
-                                color: Colors.greenAccent.withValues(
-                                  alpha: 0.7,
-                                ),
-                                onPressed: () {
-                                  final cmd = commandController.text;
-                                  if (cmd.trim().isNotEmpty) {
-                                    provider.executeCommand(
-                                      _createTempConfig(),
-                                      cmd,
-                                    );
-                                    commandController.clear();
-                                  }
-                                },
-                                tooltip: 'Execute',
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(4),
                               ),
                             ],
                           ),
                         ),
-                    ],
-                  );
-                },
+                      );
+                    },
+                  ),
+                ),
               ),
             )
           else
@@ -1337,7 +1246,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                     RotatedBox(
                       quarterTurns: 3,
                       child: Text(
-                        'TERMINAL',
+                        'LOGS',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.4),
                           fontSize: 10,

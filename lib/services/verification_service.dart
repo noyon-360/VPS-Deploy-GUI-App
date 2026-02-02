@@ -31,15 +31,15 @@ class VerificationService {
       final client = await _connect(config);
 
       final cmd = "pm2 list 2>/dev/null | grep '$appName'";
-      onLog?.call('> Executing: $cmd');
+      onLog?.call('>> $cmd');
 
       final result = await client.run(cmd);
       final output = utf8.decode(result).trim();
 
       if (output.isNotEmpty) {
-        onLog?.call('> Found existing process:\n$output');
+        onLog?.call('Found existing process:\n$output');
       } else {
-        onLog?.call('> No existing process found.');
+        onLog?.call('No existing process found.');
       }
 
       client.close();
@@ -62,15 +62,15 @@ class VerificationService {
 
       // sudo nginx -T checks loaded configs. We silence stderr (2>/dev/null) to ignore warnings.
       final cmd = 'sudo nginx -T 2>/dev/null | grep "server_name .*$domain"';
-      onLog?.call('> Executing: $cmd');
+      onLog?.call('>> $cmd');
 
       final result = await client.run(cmd);
       final output = utf8.decode(result).trim();
 
       if (output.isNotEmpty) {
-        onLog?.call('> Found existing domain config:\n$output');
+        onLog?.call('Found existing domain config:\n$output');
       } else {
-        onLog?.call('> No existing domain config found.');
+        onLog?.call('No existing domain config found.');
       }
 
       client.close();
@@ -90,7 +90,9 @@ class VerificationService {
       final client = await _connect(config);
 
       // pm2 jlist returns JSON array of processes
-      final result = await client.run('pm2 jlist 2>/dev/null');
+      const cmd = 'pm2 jlist 2>/dev/null';
+      onLog?.call('>> $cmd');
+      final result = await client.run(cmd);
       final jsonStr = utf8.decode(result).trim();
       client.close();
 
@@ -101,7 +103,7 @@ class VerificationService {
 
       final List<dynamic> processes = jsonDecode(jsonStr);
       final names = processes.map((p) => p['name'] as String).toList();
-      onLog?.call('> Found apps: ${names.join(", ")}');
+      onLog?.call('Found apps: ${names.join(", ")}');
       return names;
     } catch (e) {
       onLog?.call('> Failed to fetch PM2 apps: $e');
@@ -118,9 +120,9 @@ class VerificationService {
       final client = await _connect(config);
 
       // List files in sites-enabled
-      final result = await client.run(
-        'ls /etc/nginx/sites-enabled/ 2>/dev/null',
-      );
+      const cmd = 'ls /etc/nginx/sites-enabled/ 2>/dev/null';
+      onLog?.call('>> $cmd');
+      final result = await client.run(cmd);
       final output = utf8.decode(result).trim();
       client.close();
 
@@ -134,7 +136,7 @@ class VerificationService {
           .map((s) => s.trim())
           .where((s) => s.isNotEmpty)
           .toList();
-      onLog?.call('> Found sites: ${sites.join(", ")}');
+      onLog?.call('Found sites: ${sites.join(", ")}');
       return sites;
     } catch (e) {
       onLog?.call('> Failed to fetch active sites: $e');
@@ -150,7 +152,9 @@ class VerificationService {
     try {
       onLog?.call('> Deleting PM2 app: $appName...');
       final client = await _connect(config);
-      final session = await client.execute('pm2 delete "$appName" && pm2 save');
+      final cmd = 'pm2 delete "$appName" && pm2 save';
+      onLog?.call('>> $cmd');
+      final session = await client.execute(cmd);
       await session.stdout
           .listen((event) => onLog?.call(utf8.decode(event)))
           .asFuture();
@@ -173,6 +177,7 @@ class VerificationService {
       // Remove from enabled and available
       final cmd =
           'sudo rm "/etc/nginx/sites-enabled/$siteName" "/etc/nginx/sites-available/$siteName" && sudo systemctl reload nginx';
+      onLog?.call('>> $cmd');
       final session = await client.execute(cmd);
       await session.stdout
           .listen((event) => onLog?.call(utf8.decode(event)))
@@ -191,6 +196,7 @@ class VerificationService {
     required Function(String, bool isError) onOutput,
   }) async {
     try {
+      onOutput('>> $command', false);
       final client = await _connect(config);
       final session = await client.execute(command);
 
@@ -211,6 +217,10 @@ class VerificationService {
       onOutput('Error executing command: $e', true);
       return false;
     }
+  }
+
+  Future<SSHClient> createClient(ClientConfig config) async {
+    return await _connect(config);
   }
 
   Future<SSHClient> _connect(ClientConfig config) async {

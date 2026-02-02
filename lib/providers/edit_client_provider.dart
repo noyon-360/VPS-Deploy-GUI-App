@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 class EditClientProvider with ChangeNotifier {
   final VerificationService _verifier = VerificationService();
   bool _disposed = false;
+  bool _isBusy = false; // Global busy state for command execution
+
+  bool get isBusy => _isBusy;
 
   // Form State
   String _deploymentType = 'backend';
@@ -45,14 +48,16 @@ class EditClientProvider with ChangeNotifier {
   List<String> get runningApps => _runningApps;
   List<String> get activeSites => _activeSites;
 
-  // Terminal Logs
+  // Terminal (xterm)
+  // Terminal Session Management
+  bool _isTerminalConnected = false;
+
+  bool get isTerminalConnected => _isTerminalConnected;
+
+  // Legacy logs for verification operations
   final List<LogEntry> _logs = [];
   List<LogEntry> get logs => List.unmodifiable(_logs);
   final ScrollController logScrollController = ScrollController();
-
-  // Command History
-  final List<String> _history = [];
-  List<String> get history => _history;
 
   void setDeploymentType(String type) {
     _deploymentType = type;
@@ -119,28 +124,36 @@ class EditClientProvider with ChangeNotifier {
     addLog('System: All logs copied to clipboard.', type: LogType.info);
   }
 
-  Future<void> executeCommand(ClientConfig tempConfig, String command) async {
-    if (command.trim().isEmpty || _disposed) return;
+  // Terminal Session Management
+  // Terminal Session Management is removed in favor of Log Console
+  Future<void> connectTerminal(ClientConfig config) async {
+    // No-op or removed. Keeping empty method if needed for UI temporary compatibility,
+    // but better to remove.
+    // However, the screen calls this. I will remove it from the screen too.
+    // So I will remove this method entirely.
+  }
 
-    _history.add(command);
+  void disconnectTerminal() {
+    // No-op
+    _isTerminalConnected = false;
+    notifyListeners();
+  }
 
-    addLog('> $command', type: LogType.command);
+  void clearTerminal() {
+    // No-op
+  }
 
-    final success = await _verifier.runInteractiveCommand(
-      tempConfig,
-      command,
-      onOutput: (output, isError) {
-        if (!_disposed) {
-          addLog(output, type: isError ? LogType.stderr : LogType.stdout);
-        }
-      },
-    );
-
-    if (!_disposed && !success) {
-      addLog('Failed to execute command.', type: LogType.stderr);
-    }
-    if (!_disposed) {
-      notifyListeners();
+  void _handleServiceLog(String message) {
+    if (message.startsWith('>> ')) {
+      addLog(message, type: LogType.command);
+    } else if (message.startsWith('> Error') ||
+        message.contains('Connection failed') ||
+        message.contains('Failed')) {
+      addLog(message, type: LogType.stderr);
+    } else if (message.startsWith('> ')) {
+      addLog(message, type: LogType.info);
+    } else {
+      addLog(message, type: LogType.stdout);
     }
   }
 
@@ -157,30 +170,36 @@ class EditClientProvider with ChangeNotifier {
   }
 
   Future<void> testConnection(ClientConfig tempConfig) async {
+    if (_isBusy) return;
+    _isBusy = true;
     _isVerifying = true;
     _verificationStatus = 'Connecting...';
     _logs.clear();
     _isTerminalVisible = true;
     notifyListeners();
 
-    addLog('--- Starting Connection Test ---', type: LogType.info);
+    try {
+      addLog('--- Starting Connection Test ---', type: LogType.info);
 
-    final success = await _verifier.verifyConnection(
-      tempConfig,
-      onLog: (msg) => addLog(msg, type: LogType.info),
-    );
+      final success = await _verifier.verifyConnection(
+        tempConfig,
+        onLog: _handleServiceLog,
+      );
 
-    _isVerifying = false;
-    _isVerified = success;
-    _verificationStatus = success
-        ? 'Connection Successful'
-        : 'Connection Failed. Check credentials.';
-    notifyListeners();
+      _isVerified = success;
+      _verificationStatus = success
+          ? 'Connection Successful'
+          : 'Connection Failed. Check credentials.';
 
-    addLog('--- Test Completed. Success: $success ---', type: LogType.info);
+      addLog('--- Test Completed. Success: $success ---', type: LogType.info);
 
-    if (success) {
-      await refreshServerState(tempConfig);
+      if (success) {
+        await refreshServerState(tempConfig);
+      }
+    } finally {
+      _isBusy = false;
+      _isVerifying = false;
+      notifyListeners();
     }
   }
 
@@ -189,11 +208,11 @@ class EditClientProvider with ChangeNotifier {
 
     final apps = await _verifier.getRunningApps(
       tempConfig,
-      onLog: (msg) => addLog(msg, type: LogType.info),
+      onLog: _handleServiceLog,
     );
     final sites = await _verifier.getActiveSites(
       tempConfig,
-      onLog: (msg) => addLog(msg, type: LogType.info),
+      onLog: _handleServiceLog,
     );
 
     _runningApps = apps;
@@ -202,86 +221,118 @@ class EditClientProvider with ChangeNotifier {
   }
 
   Future<void> checkApp(ClientConfig tempConfig, String appName) async {
-    if (!_isVerified || appName.isEmpty) return;
+    if (!_isVerified || appName.isEmpty || _isBusy) return;
 
+    _isBusy = true;
     _appVerificationState = 1; // Loading
     notifyListeners();
-    addLog('--- Checking App Name: $appName ---', type: LogType.info);
 
-    final exists = await _verifier.checkPm2Exists(
-      tempConfig,
-      appName,
-      onLog: (msg) => addLog(msg, type: LogType.info),
-    );
+    try {
+      addLog('--- Checking App Name: $appName ---', type: LogType.info);
 
-    _appVerificationState = exists ? 3 : 2;
-    notifyListeners();
-    addLog('--- App Check Completed. Exists: $exists ---', type: LogType.info);
+      final exists = await _verifier.checkPm2Exists(
+        tempConfig,
+        appName,
+        onLog: _handleServiceLog,
+      );
+
+      _appVerificationState = exists ? 3 : 2;
+      addLog(
+        '--- App Check Completed. Exists: $exists ---',
+        type: LogType.info,
+      );
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> checkDomain(ClientConfig tempConfig, String domain) async {
-    if (!_isVerified || domain.isEmpty) return;
+    if (!_isVerified || domain.isEmpty || _isBusy) return;
 
+    _isBusy = true;
     _domainVerificationState = 1; // Loading
     notifyListeners();
-    addLog('--- Checking Domain: $domain ---', type: LogType.info);
 
-    final exists = await _verifier.checkDomainConfigExists(
-      tempConfig,
-      domain,
-      onLog: (msg) => addLog(msg, type: LogType.info),
-    );
+    try {
+      addLog('--- Checking Domain: $domain ---', type: LogType.info);
 
-    _domainVerificationState = exists ? 3 : 2;
-    notifyListeners();
-    addLog(
-      '--- Domain Check Completed. Exists: $exists ---',
-      type: LogType.info,
-    );
+      final exists = await _verifier.checkDomainConfigExists(
+        tempConfig,
+        domain,
+        onLog: _handleServiceLog,
+      );
+
+      _domainVerificationState = exists ? 3 : 2;
+      addLog(
+        '--- Domain Check Completed. Exists: $exists ---',
+        type: LogType.info,
+      );
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> deleteApp(ClientConfig tempConfig, String appName) async {
+    if (_isBusy) return false;
+    _isBusy = true;
     _isTerminalVisible = true;
     notifyListeners();
-    addLog('--- Deletion Started: PM2 App $appName ---', type: LogType.info);
 
-    final success = await _verifier.deletePm2App(
-      tempConfig,
-      appName,
-      onLog: (msg) => addLog(msg, type: LogType.info),
-    );
+    try {
+      addLog('--- Deletion Started: PM2 App $appName ---', type: LogType.info);
 
-    if (success) {
-      addLog('--- Deletion Successful: $appName ---', type: LogType.info);
-      await refreshServerState(tempConfig);
+      final success = await _verifier.deletePm2App(
+        tempConfig,
+        appName,
+        onLog: _handleServiceLog,
+      );
+
+      if (success) {
+        addLog('--- Deletion Successful: $appName ---', type: LogType.info);
+        await refreshServerState(tempConfig);
+      }
+      return success;
+    } finally {
+      _isBusy = false;
+      notifyListeners();
     }
-    return success;
   }
 
   Future<bool> deleteSite(ClientConfig tempConfig, String siteName) async {
+    if (_isBusy) return false;
+    _isBusy = true;
     _isTerminalVisible = true;
     notifyListeners();
-    addLog(
-      '--- Deletion Started: Nginx Site $siteName ---',
-      type: LogType.info,
-    );
 
-    final success = await _verifier.deleteNginxSite(
-      tempConfig,
-      siteName,
-      onLog: (msg) => addLog(msg, type: LogType.info),
-    );
+    try {
+      addLog(
+        '--- Deletion Started: Nginx Site $siteName ---',
+        type: LogType.info,
+      );
 
-    if (success) {
-      addLog('--- Deletion Successful: $siteName ---', type: LogType.info);
-      await refreshServerState(tempConfig);
+      final success = await _verifier.deleteNginxSite(
+        tempConfig,
+        siteName,
+        onLog: _handleServiceLog,
+      );
+
+      if (success) {
+        addLog('--- Deletion Successful: $siteName ---', type: LogType.info);
+        await refreshServerState(tempConfig);
+      }
+      return success;
+    } finally {
+      _isBusy = false;
+      notifyListeners();
     }
-    return success;
   }
 
   @override
   void dispose() {
     _disposed = true;
+    disconnectTerminal();
     logScrollController.dispose();
     super.dispose();
   }
