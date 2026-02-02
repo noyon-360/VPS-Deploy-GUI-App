@@ -914,26 +914,41 @@ class _EditClientScreenState extends State<EditClientScreen> {
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 200) return const SizedBox();
                   return provider.isVerified
-                      ? ListView(
-                          padding: const EdgeInsets.all(12),
+                      ? Column(
                           children: [
-                            _buildExplorerSection(
-                              'PM2 APPS',
-                              Icons.dns,
-                              provider.runningApps,
-                              (name) => _selectApp(provider, name),
-                              (name) => _deleteApp(provider, name),
-                              Colors.greenAccent,
+                            // Top Section: Apps & Sites
+                            Expanded(
+                              flex: 5, // Default split
+                              child: ListView(
+                                padding: const EdgeInsets.all(12),
+                                children: [
+                                  _buildExplorerSection(
+                                    'PM2 APPS',
+                                    Icons.dns,
+                                    provider.runningApps,
+                                    (name) => _selectApp(provider, name),
+                                    (name) => _deleteApp(provider, name),
+                                    Colors.greenAccent,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  _buildExplorerSection(
+                                    'NGINX SITES',
+                                    Icons.web,
+                                    provider.activeSites,
+                                    (name) => _selectSite(provider, name),
+                                    (name) => _deleteSite(provider, name),
+                                    Colors.blueAccent,
+                                  ),
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 20),
-                            _buildExplorerSection(
-                              'NGINX SITES',
-                              Icons.web,
-                              provider.activeSites,
-                              (name) => _selectSite(provider, name),
-                              (name) => _deleteSite(provider, name),
-                              Colors.blueAccent,
+                            // Divider / Resize Handle (Simple for now)
+                            Container(
+                              height: 1,
+                              color: Colors.white.withValues(alpha: 0.1),
                             ),
+                            // Bottom Section: File Explorer
+                            _buildFileExplorer(provider),
                           ],
                         )
                       : Center(
@@ -1107,6 +1122,151 @@ class _EditClientScreenState extends State<EditClientScreen> {
           children: [
             Text(label, style: const TextStyle(fontSize: 14)),
             Switch(value: value, onChanged: onChanged),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileExplorer(EditClientProvider provider) {
+    return Expanded(
+      flex: 5,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.2),
+          border: Border(
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Explorer Header
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.folder_open,
+                    color: Colors.white.withValues(alpha: 0.5),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'FILES',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 14),
+                    color: Colors.white.withValues(alpha: 0.5),
+                    onPressed: () => provider.fetchFiles(
+                      _createTempConfig(),
+                      provider.currentPath,
+                    ),
+                    splashRadius: 16,
+                  ),
+                ],
+              ),
+            ),
+            // Current Path
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () => provider.navigateUp(_createTempConfig()),
+                    child: Icon(
+                      Icons.arrow_upward,
+                      size: 14,
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      provider.currentPath,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        fontSize: 10,
+                        fontFamily: 'Consolas',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (provider.isLoadingFiles)
+              const LinearProgressIndicator(
+                minHeight: 2,
+                backgroundColor: Colors.transparent,
+              )
+            else
+              const Divider(height: 1, thickness: 1, color: Colors.transparent),
+
+            // File List
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: provider.files.length,
+                itemBuilder: (context, index) {
+                  final file = provider.files[index];
+                  return InkWell(
+                    onTap: () {
+                      if (file.isDirectory) {
+                        provider.navigateTo(_createTempConfig(), file.path);
+                      } else {
+                        provider.catFile(_createTempConfig(), file.path);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 4,
+                        horizontal: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            file.isDirectory
+                                ? Icons.folder
+                                : Icons.insert_drive_file,
+                            size: 14,
+                            color: file.isDirectory
+                                ? Colors.amber.withValues(alpha: 0.8)
+                                : Colors.blueGrey.withValues(alpha: 0.8),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              file.name,
+                              style: const TextStyle(
+                                color: Color(0xFFDDDDDD),
+                                fontSize: 12,
+                                fontFamily: 'Consolas',
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            file.size,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),

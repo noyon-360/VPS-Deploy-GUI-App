@@ -3,6 +3,7 @@ import 'package:deploy_gui/models/log_entry.dart';
 import 'package:deploy_gui/services/verification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:deploy_gui/models/remote_file.dart';
 
 class EditClientProvider with ChangeNotifier {
   final VerificationService _verifier = VerificationService();
@@ -45,8 +46,15 @@ class EditClientProvider with ChangeNotifier {
   // Server Data
   List<String> _runningApps = [];
   List<String> _activeSites = [];
+  List<RemoteFile> _files = [];
+  String _currentPath = '/var/www';
+  bool _isLoadingFiles = false;
+
   List<String> get runningApps => _runningApps;
   List<String> get activeSites => _activeSites;
+  List<RemoteFile> get files => _files;
+  String get currentPath => _currentPath;
+  bool get isLoadingFiles => _isLoadingFiles;
 
   // Terminal (xterm)
   // Terminal Session Management
@@ -217,7 +225,70 @@ class EditClientProvider with ChangeNotifier {
 
     _runningApps = apps;
     _activeSites = sites;
+
+    // Initial file fetch if empty
+    if (_files.isEmpty) {
+      await fetchFiles(tempConfig, _currentPath);
+    }
+
     notifyListeners();
+  }
+
+  // File Explorer Methods
+  Future<void> fetchFiles(ClientConfig config, String path) async {
+    _isLoadingFiles = true;
+    notifyListeners();
+
+    // Log the cd command for user visibility
+    if (path != _currentPath) {
+      addLog('>> cd "$path"', type: LogType.command);
+    }
+
+    final fileList = await _verifier.listFiles(
+      config,
+      path,
+      onLog: _handleServiceLog,
+    );
+
+    _files = fileList;
+    _currentPath = path;
+    _isLoadingFiles = false;
+    notifyListeners();
+  }
+
+  Future<void> navigateUp(ClientConfig config) async {
+    if (_currentPath == '/') return;
+
+    // Simple path manipulation for parent
+    final parts = _currentPath.split('/').where((p) => p.isNotEmpty).toList();
+    if (parts.isNotEmpty) {
+      parts.removeLast();
+    }
+    final parentPath = parts.isEmpty ? '/' : '/${parts.join('/')}';
+
+    await fetchFiles(config, parentPath);
+  }
+
+  Future<void> navigateTo(ClientConfig config, String path) async {
+    await fetchFiles(config, path);
+  }
+
+  Future<void> catFile(ClientConfig config, String path) async {
+    if (_isBusy) return;
+    _isBusy = true;
+    notifyListeners();
+
+    // Ensure logs are visible to see the content
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Reading file: $path ---', type: LogType.info);
+      await _verifier.catFile(config, path, onLog: _handleServiceLog);
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> checkApp(ClientConfig tempConfig, String appName) async {

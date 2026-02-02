@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:deploy_gui/models/client_config.dart';
+import 'package:deploy_gui/models/remote_file.dart';
 
 class VerificationService {
   Future<bool> verifyConnection(
@@ -375,5 +376,92 @@ class VerificationService {
       return {'user': parts[0], 'host': parts[1]};
     }
     return {'user': 'root', 'host': alias};
+  }
+
+  Future<List<RemoteFile>> listFiles(
+    ClientConfig config,
+    String path, {
+    Function(String)? onLog,
+  }) async {
+    SSHClient? client;
+    try {
+      onLog?.call('> Listing files in: $path');
+      client = await _connect(config);
+
+      // ls -la --time-style=long-iso to get consistent date format if possible,
+      // but standard ls -la is safer for general compatibility.
+      final cmd = 'ls -la "$path" 2>/dev/null';
+      onLog?.call('>> $cmd');
+      final result = await client.run(cmd);
+      final output = utf8.decode(result).trim();
+
+      if (output.isEmpty) {
+        return [];
+      }
+
+      final lines = output.split('\n');
+      final List<RemoteFile> files = [];
+
+      for (final line in lines) {
+        if (line.trim().isEmpty || line.startsWith('total')) continue;
+        try {
+          // Filter out . and .. to avoid loop/confusion if desired,
+          // or keep them for navigation. Let's keep them but maybe UI filters ..
+          // Actually .. is useful for "Up", . is useless.
+          // Parsing ls -la is fragile, but standard format is:
+          // drwxr-xr-x 2 user group size date time name
+          final file = RemoteFile.fromLsOutput(line.trim(), path);
+          if (file.name != '.') {
+            files.add(file);
+          }
+        } catch (e) {
+          // ignore parse errors for weird lines
+        }
+      }
+
+      // Sort: Directories first, then files
+      files.sort((a, b) {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.compareTo(b.name);
+      });
+
+      return files;
+    } catch (e) {
+      onLog?.call('> Error listing files: $e');
+      return [];
+    } finally {
+      client?.close();
+    }
+  }
+
+  Future<void> catFile(
+    ClientConfig config,
+    String path, {
+    Function(String)? onLog,
+  }) async {
+    SSHClient? client;
+    try {
+      onLog?.call('> Reading content of $path...');
+      client = await _connect(config);
+
+      final cmd = 'cat "$path"';
+      onLog?.call('>> $cmd');
+
+      final result = await client.run(cmd);
+      final output = utf8.decode(
+        result,
+      ); // Don't trim to preserve whitespace structure if important
+
+      if (output.isNotEmpty) {
+        onLog?.call(output);
+      } else {
+        onLog?.call('(File is empty)');
+      }
+    } catch (e) {
+      onLog?.call('> Error reading file: $e');
+    } finally {
+      client?.close();
+    }
   }
 }
