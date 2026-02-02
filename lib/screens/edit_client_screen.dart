@@ -16,6 +16,8 @@ class EditClientScreen extends StatefulWidget {
 class _EditClientScreenState extends State<EditClientScreen> {
   final _formKey = GlobalKey<FormState>();
   String _deploymentType = 'backend';
+  bool _enableSSL = false;
+  late TextEditingController _sslEmailController;
 
   late TextEditingController _nameController;
   late TextEditingController _serverAliasController;
@@ -60,7 +62,10 @@ class _EditClientScreenState extends State<EditClientScreen> {
     _passwordController = TextEditingController(text: c?.password ?? '');
     _gitUsernameController = TextEditingController(text: c?.gitUsername ?? '');
     _gitTokenController = TextEditingController(text: c?.gitToken ?? '');
+    _gitTokenController = TextEditingController(text: c?.gitToken ?? '');
     _deploymentType = c?.type ?? 'backend';
+    _enableSSL = c?.enableSSL ?? false;
+    _sslEmailController = TextEditingController(text: c?.sslEmail ?? '');
   }
 
   @override
@@ -79,6 +84,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
     _passwordController.dispose();
     _gitUsernameController.dispose();
     _gitTokenController.dispose();
+    _sslEmailController.dispose();
     super.dispose();
   }
 
@@ -107,6 +113,10 @@ class _EditClientScreenState extends State<EditClientScreen> {
             ? null
             : _gitTokenController.text,
         type: _deploymentType,
+        enableSSL: _enableSSL,
+        sslEmail: _enableSSL && _sslEmailController.text.isNotEmpty
+            ? _sslEmailController.text
+            : null,
       );
 
       if (widget.client == null) {
@@ -212,6 +222,21 @@ class _EditClientScreenState extends State<EditClientScreen> {
                     'Token',
                     isPassword: true,
                   ),
+                ]),
+
+                _buildSectionHeader('SSL Configuration', Icons.security),
+                _buildCardLayout([
+                  _buildSwitch('Enable SSL (Certbot)', _enableSSL, (val) {
+                    setState(() {
+                      _enableSSL = val;
+                    });
+                  }),
+                  if (_enableSSL)
+                    _buildTextField(
+                      _sslEmailController,
+                      'SSL Email',
+                      'email@example.com',
+                    ),
                 ]),
 
                 const SizedBox(height: 32),
@@ -394,6 +419,30 @@ class _EditClientScreenState extends State<EditClientScreen> {
           }
           return null;
         },
+      ),
+    );
+  }
+
+  Widget _buildSwitch(String label, bool value, Function(bool) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha(20),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 14)),
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: Theme.of(context).colorScheme.primary,
+            ),
+          ],
+        ),
       ),
     );
   }

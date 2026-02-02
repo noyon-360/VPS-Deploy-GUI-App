@@ -25,6 +25,8 @@ ClientConfig _$ClientConfigFromJson(Map<String, dynamic> json) => ClientConfig(
   password: json['password'] as String?,
   gitUsername: json['gitUsername'] as String?,
   gitToken: json['gitToken'] as String?,
+  enableSSL: json['enableSSL'] as bool? ?? false,
+  sslEmail: json['sslEmail'] as String?,
 );
 
 Map<String, dynamic> _$ClientConfigToJson(ClientConfig instance) =>
@@ -45,4 +47,6 @@ Map<String, dynamic> _$ClientConfigToJson(ClientConfig instance) =>
       'password': instance.password,
       'gitUsername': instance.gitUsername,
       'gitToken': instance.gitToken,
+      'enableSSL': instance.enableSSL,
+      'sslEmail': instance.sslEmail,
     };

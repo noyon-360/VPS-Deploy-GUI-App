@@ -20,6 +20,8 @@ class ClientConfig {
   final String? password;
   final String? gitUsername;
   final String? gitToken;
+  final bool enableSSL;
+  final String? sslEmail;
 
   ClientConfig({
     required this.id,
@@ -39,6 +41,8 @@ class ClientConfig {
     this.password,
     this.gitUsername,
     this.gitToken,
+    this.enableSSL = false,
+    this.sslEmail,
   });
 
   factory ClientConfig.fromJson(Map<String, dynamic> json) =>
@@ -62,6 +66,8 @@ class ClientConfig {
     String? password,
     String? gitUsername,
     String? gitToken,
+    bool? enableSSL,
+    String? sslEmail,
   }) {
     return ClientConfig(
       id: id ?? this.id,
@@ -80,6 +86,8 @@ class ClientConfig {
       password: password ?? this.password,
       gitUsername: gitUsername ?? this.gitUsername,
       gitToken: gitToken ?? this.gitToken,
+      enableSSL: enableSSL ?? this.enableSSL,
+      sslEmail: sslEmail ?? this.sslEmail,
     );
   }
 }

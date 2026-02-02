@@ -85,8 +85,9 @@ class DeploymentService {
   }
 
   List<String> _getCommands(String mode, ClientConfig config) {
+    List<String> cmds = [];
     if (mode == 'initial') {
-      return [
+      cmds = [
         'sudo apt update && sudo apt upgrade -y',
         'sudo apt install -y git nginx nodejs npm',
         'sudo npm install -g pm2',
@@ -104,7 +105,7 @@ class DeploymentService {
         'sudo nginx -t && sudo systemctl restart nginx',
       ];
     } else {
-      return [
+      cmds = [
         'cd ${config.pathOnServer}',
         'git remote set-url origin ${_resolveRepoUrl(config)}',
         'git pull origin ${config.branch}',
@@ -113,6 +114,16 @@ class DeploymentService {
         'sudo systemctl restart nginx',
       ];
     }
+
+    if (config.enableSSL && config.sslEmail != null) {
+      cmds.addAll([
+        'sudo apt update',
+        'sudo apt install -y certbot python3-certbot-nginx',
+        'sudo certbot --nginx -d ${config.domain} -m ${config.sslEmail} --agree-tos --non-interactive',
+      ]);
+    }
+
+    return cmds;
   }
 
   String _resolveRepoUrl(ClientConfig config) {
