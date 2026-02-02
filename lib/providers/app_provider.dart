@@ -40,4 +40,10 @@ class AppProvider with ChangeNotifier {
     await _storageService.saveConfigs(_clients);
     notifyListeners();
   }
+
+  Future<void> deleteAllClients() async {
+    _clients.clear();
+    await _storageService.saveConfigs(_clients);
+    notifyListeners();
+  }
 }

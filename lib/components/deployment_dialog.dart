@@ -1,4 +1,5 @@
 import 'package:deploy_gui/models/client_config.dart';
+import 'package:deploy_gui/models/temp_client_config.dart';
 import 'package:deploy_gui/services/deployment_service.dart';
 import 'package:flutter/material.dart';
 
@@ -27,10 +28,10 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
 
   Future<void> _startDeploy() async {
     try {
-      final stream = await _deploymentService.deploy(
-        widget.mode,
-        widget.client,
-      );
+      // Convert ClientConfig to TempClientConfig for deployment
+      final tempConfig = TempClientConfig.from(widget.client);
+
+      final stream = await _deploymentService.deploy(widget.mode, tempConfig);
       stream.listen(
         (line) {
           if (mounted) {

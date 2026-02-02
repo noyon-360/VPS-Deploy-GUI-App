@@ -1,4 +1,6 @@
 import 'package:deploy_gui/models/client_config.dart';
+import 'package:deploy_gui/models/temp_client_config.dart';
+import 'package:deploy_gui/models/repository_config.dart';
 import 'package:deploy_gui/providers/edit_client_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -45,31 +47,40 @@ class _EditClientScreenState extends State<EditClientScreen> {
   void initState() {
     super.initState();
     final c = widget.client;
+    // Get first repository if available
+    final repo = c?.repositories.isNotEmpty == true
+        ? c!.repositories.first
+        : null;
+
     _nameController = TextEditingController(text: c?.name ?? '');
     _serverAliasController = TextEditingController(text: c?.serverAlias ?? '');
-    _repoController = TextEditingController(text: c?.repo ?? '');
-    _branchController = TextEditingController(text: c?.branch ?? 'main');
-    _domainController = TextEditingController(text: c?.domain ?? '');
-    _portController = TextEditingController(text: c?.port ?? '5001');
-    _appNameController = TextEditingController(text: c?.appName ?? 'backend');
+    _repoController = TextEditingController(text: repo?.repoUrl ?? '');
+    _branchController = TextEditingController(text: repo?.branch ?? 'main');
+    _domainController = TextEditingController(text: repo?.domain ?? '');
+    _portController = TextEditingController(text: repo?.port ?? '5001');
+    _appNameController = TextEditingController(
+      text: repo?.appName ?? 'backend',
+    );
     _pathOnServerController = TextEditingController(
-      text: c?.pathOnServer ?? '/var/www/backend',
+      text: repo?.pathOnServer ?? '/var/www/backend',
     );
     _nginxConfController = TextEditingController(
-      text: c?.nginxConf ?? '/etc/nginx/sites-available/backend',
+      text: repo?.nginxConf ?? '/etc/nginx/sites-available/backend',
     );
     _installCommandController = TextEditingController(
-      text: c?.installCommand ?? 'npm install',
+      text: repo?.installCommand ?? 'npm install',
     );
     _startCommandController = TextEditingController(
       text:
-          c?.startCommand ??
+          repo?.startCommand ??
           'pm2 start server.js --name "{APP_NAME}" -- --port {PORT}',
     );
     _passwordController = TextEditingController(text: c?.password ?? '');
-    _gitUsernameController = TextEditingController(text: c?.gitUsername ?? '');
-    _gitTokenController = TextEditingController(text: c?.gitToken ?? '');
-    _sslEmailController = TextEditingController(text: c?.sslEmail ?? '');
+    _gitUsernameController = TextEditingController(
+      text: repo?.gitUsername ?? '',
+    );
+    _gitTokenController = TextEditingController(text: repo?.gitToken ?? '');
+    _sslEmailController = TextEditingController(text: repo?.sslEmail ?? '');
   }
 
   @override
@@ -155,12 +166,10 @@ class _EditClientScreenState extends State<EditClientScreen> {
         false;
   }
 
-  ClientConfig _createTempConfig() {
-    return ClientConfig(
-      id: 'temp',
-      name: 'temp',
-      serverAlias: _serverAliasController.text,
-      repo: _repoController.text,
+  TempClientConfig _createTempConfig() {
+    // Create repository config from form data
+    final repo = RepositoryConfig(
+      repoUrl: _repoController.text,
       branch: _branchController.text,
       appName: _appNameController.text,
       pathOnServer: _pathOnServerController.text,
@@ -169,27 +178,41 @@ class _EditClientScreenState extends State<EditClientScreen> {
       port: _portController.text,
       installCommand: _installCommandController.text,
       startCommand: _startCommandController.text,
-      password: _passwordController.text.isEmpty
-          ? null
-          : _passwordController.text,
       gitUsername: _gitUsernameController.text.isEmpty
           ? null
           : _gitUsernameController.text,
       gitToken: _gitTokenController.text.isEmpty
           ? null
           : _gitTokenController.text,
+      enableSSL: false, // Will be set from provider
       sslEmail: _sslEmailController.text.isEmpty
           ? null
           : _sslEmailController.text,
+    );
+
+    // Create TempClientConfig with repository
+    return TempClientConfig(
+      id: widget.client?.id ?? 'temp',
+      name: _nameController.text.isEmpty ? 'temp' : _nameController.text,
+      serverAlias: _serverAliasController.text,
+      password: _passwordController.text.isEmpty
+          ? null
+          : _passwordController.text,
+      repositories: [repo],
+      currentRepo: repo,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final repo = widget.client?.repositories.isNotEmpty == true
+        ? widget.client!.repositories.first
+        : null;
+
     return ChangeNotifierProvider(
       create: (_) => EditClientProvider()
-        ..setDeploymentType(widget.client?.type ?? 'backend')
-        ..setEnableSSL(widget.client?.enableSSL ?? false),
+        ..setDeploymentType('backend') // Default type
+        ..setEnableSSL(repo?.enableSSL ?? false),
       child: Consumer<EditClientProvider>(
         builder: (context, provider, child) {
           // Unfocus shell input if it becomes invisible to prevent PlatformException

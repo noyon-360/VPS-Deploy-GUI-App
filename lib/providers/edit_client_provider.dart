@@ -1,4 +1,4 @@
-import 'package:deploy_gui/models/client_config.dart';
+import 'package:deploy_gui/models/temp_client_config.dart';
 import 'package:deploy_gui/models/log_entry.dart';
 import 'package:deploy_gui/services/verification_service.dart';
 import 'package:flutter/material.dart';
@@ -88,7 +88,7 @@ class EditClientProvider with ChangeNotifier {
   List<ServerToolStatus> get serverTools => _serverTools;
   bool get checkingTools => _checkingTools;
 
-  Future<void> checkServerPrerequisites(ClientConfig config) async {
+  Future<void> checkServerPrerequisites(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _checkingTools = true;
@@ -122,7 +122,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> installMissingTools(ClientConfig config) async {
+  Future<void> installMissingTools(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -155,7 +155,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> cloneProject(ClientConfig config) async {
+  Future<void> cloneProject(TempClientConfig config) async {
     if (_cloning) return;
     _cloning = true;
     _isTerminalVisible = true;
@@ -234,7 +234,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> deployApp(ClientConfig config) async {
+  Future<void> deployApp(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -289,7 +289,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> configureNginxAndSSL(ClientConfig config) async {
+  Future<void> configureNginxAndSSL(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -442,7 +442,7 @@ server {
     notifyListeners();
   }
 
-  Future<void> connectSSHShell(ClientConfig config) async {
+  Future<void> connectSSHShell(TempClientConfig config) async {
     if (_shellSession != null) {
       _shellSession!.close();
       _shellSession = null;
@@ -633,7 +633,7 @@ server {
     });
   }
 
-  Future<void> testConnection(ClientConfig tempConfig) async {
+  Future<void> testConnection(TempClientConfig tempConfig) async {
     if (_isBusy) return;
     _isBusy = true;
     _isVerifying = true;
@@ -667,7 +667,7 @@ server {
     }
   }
 
-  Future<void> refreshServerState(ClientConfig tempConfig) async {
+  Future<void> refreshServerState(TempClientConfig tempConfig) async {
     if (!_isVerified) return;
 
     final apps = await _verifier.getRunningApps(
@@ -691,7 +691,7 @@ server {
   }
 
   // File Explorer Methods
-  Future<void> fetchFiles(ClientConfig config, String path) async {
+  Future<void> fetchFiles(TempClientConfig config, String path) async {
     _isLoadingFiles = true;
     notifyListeners();
 
@@ -712,7 +712,7 @@ server {
     notifyListeners();
   }
 
-  Future<void> navigateUp(ClientConfig config) async {
+  Future<void> navigateUp(TempClientConfig config) async {
     if (_currentPath == '/') return;
 
     // Simple path manipulation for parent
@@ -725,11 +725,11 @@ server {
     await fetchFiles(config, parentPath);
   }
 
-  Future<void> navigateTo(ClientConfig config, String path) async {
+  Future<void> navigateTo(TempClientConfig config, String path) async {
     await fetchFiles(config, path);
   }
 
-  Future<void> catFile(ClientConfig config, String path) async {
+  Future<void> catFile(TempClientConfig config, String path) async {
     if (_isBusy) return;
     _isBusy = true;
     notifyListeners();
@@ -747,7 +747,7 @@ server {
     }
   }
 
-  Future<void> checkApp(ClientConfig tempConfig, String appName) async {
+  Future<void> checkApp(TempClientConfig tempConfig, String appName) async {
     if (!_isVerified || appName.isEmpty || _isBusy) return;
 
     _isBusy = true;
@@ -774,7 +774,7 @@ server {
     }
   }
 
-  Future<void> checkDomain(ClientConfig tempConfig, String domain) async {
+  Future<void> checkDomain(TempClientConfig tempConfig, String domain) async {
     if (!_isVerified || domain.isEmpty || _isBusy) return;
 
     _isBusy = true;
@@ -801,7 +801,7 @@ server {
     }
   }
 
-  Future<bool> deleteApp(ClientConfig tempConfig, String appName) async {
+  Future<bool> deleteApp(TempClientConfig config, String appName) async {
     if (_isBusy) return false;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -811,14 +811,14 @@ server {
       addLog('--- Deletion Started: PM2 App $appName ---', type: LogType.info);
 
       final success = await _verifier.deletePm2App(
-        tempConfig,
+        config,
         appName,
         onLog: _handleServiceLog,
       );
 
       if (success) {
         addLog('--- Deletion Successful: $appName ---', type: LogType.info);
-        await refreshServerState(tempConfig);
+        await refreshServerState(config);
       }
       return success;
     } finally {
@@ -827,7 +827,7 @@ server {
     }
   }
 
-  Future<bool> deleteSite(ClientConfig tempConfig, String siteName) async {
+  Future<bool> deleteSite(TempClientConfig config, String siteName) async {
     if (_isBusy) return false;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -840,14 +840,14 @@ server {
       );
 
       final success = await _verifier.deleteNginxSite(
-        tempConfig,
+        config,
         siteName,
         onLog: _handleServiceLog,
       );
 
       if (success) {
         addLog('--- Deletion Successful: $siteName ---', type: LogType.info);
-        await refreshServerState(tempConfig);
+        await refreshServerState(config);
       }
       return success;
     } finally {

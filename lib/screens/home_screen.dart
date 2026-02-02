@@ -14,22 +14,66 @@ class HomeScreen extends StatelessWidget {
     return ResponsiveLayout(
       title: 'Easy Deploy Tool',
       actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 16),
-          child: ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const EditClientScreen()),
+        Consumer<AppProvider>(
+          builder: (context, provider, child) {
+            // Only show delete all button if there are clients
+            if (provider.clients.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EditClientScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Client'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.black,
+                  ),
+                ),
               );
-            },
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Client'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Colors.black,
-            ),
-          ),
+            }
+
+            return Row(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    onPressed: () => _showDeleteAllDialog(context, provider),
+                    icon: const Icon(Icons.delete_sweep_rounded),
+                    tooltip: 'Delete All Data',
+                    style: IconButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const EditClientScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Client'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.black,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ],
       body: Consumer<AppProvider>(
@@ -180,12 +224,26 @@ class _ClientCardState extends State<ClientCard> {
                   'Host',
                   widget.client.serverAlias,
                 ),
-                _buildInfoRow(Icons.link_rounded, 'Repo', widget.client.repo),
-                _buildInfoRow(
-                  Icons.language_rounded,
-                  'Domain',
-                  widget.client.domain,
-                ),
+                if (widget.client.repositories.isNotEmpty)
+                  _buildInfoRow(
+                    Icons.link_rounded,
+                    'Repo',
+                    widget.client.repositories.first.repoUrl,
+                  ),
+                if (widget.client.repositories.isNotEmpty)
+                  _buildInfoRow(
+                    Icons.language_rounded,
+                    'Domain',
+                    widget.client.repositories.first.domain,
+                  ),
+                if (widget.client.repositories.isEmpty)
+                  _buildInfoRow(Icons.link_rounded, 'Repo', 'No repository'),
+                if (widget.client.repositories.isEmpty)
+                  _buildInfoRow(
+                    Icons.language_rounded,
+                    'Domain',
+                    'Not configured',
+                  ),
                 const Spacer(),
                 Row(
                   children: [
@@ -302,4 +360,84 @@ class _ClientCardState extends State<ClientCard> {
       builder: (context) => DeploymentDialog(client: widget.client, mode: mode),
     );
   }
+}
+
+// Standalone function for delete all dialog
+void _showDeleteAllDialog(BuildContext context, AppProvider provider) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+          SizedBox(width: 12),
+          Text('Delete All Data'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Are you sure you want to delete all client configurations?',
+            style: TextStyle(fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Colors.redAccent.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  color: Colors.redAccent,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'This will permanently delete ${provider.clients.length} client(s) and cannot be undone.',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            provider.deleteAllClients();
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('All data deleted successfully'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.redAccent,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Delete All'),
+        ),
+      ],
+    ),
+  );
 }
