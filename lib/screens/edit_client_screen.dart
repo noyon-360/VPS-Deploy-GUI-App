@@ -146,7 +146,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
     await provider.deleteSite(_createTempConfig(), siteName);
   }
 
-  void _selectApp(EditClientProvider provider, String appName) {
+  void _selectApp(EditClientProvider provider, String appNameWithPort) {
+    // Extract name if it contains port info: "app (Port: 123)" -> "app"
+    final appName = appNameWithPort.split(' (Port:').first.trim();
     _appNameController.text = appName;
     // Also try to guess default path/conf if they seem to follow the name
     if (_pathOnServerController.text.contains('backend') ||
@@ -156,7 +158,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
     provider.checkApp(_createTempConfig(), appName);
   }
 
-  void _selectSite(EditClientProvider provider, String domain) {
+  void _selectSite(EditClientProvider provider, String domainWithPort) {
+    // Extract domain if it contains port info
+    final domain = domainWithPort.split(' (Port:').first.trim();
     _domainController.text = domain;
     provider.checkDomain(_createTempConfig(), domain);
   }
@@ -1044,14 +1048,30 @@ class _EditClientScreenState extends State<EditClientScreen> {
                     children: [
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          item,
-                          style: const TextStyle(
-                            color: Color(0xFFCCCCCC),
-                            fontSize: 12,
-                            fontFamily: 'Consolas',
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.split(' (').first,
+                              style: const TextStyle(
+                                color: Color(0xFFCCCCCC),
+                                fontSize: 12,
+                                fontFamily: 'Consolas',
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (item.contains(' ('))
+                              Text(
+                                item
+                                    .substring(item.indexOf(' (') + 1)
+                                    .replaceAll(')', ''),
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                  fontSize: 10,
+                                  fontFamily: 'Consolas',
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       IconButton(
