@@ -1,6 +1,7 @@
 import 'package:deploy_gui/models/client_config.dart';
 import 'package:deploy_gui/models/temp_client_config.dart';
 import 'package:deploy_gui/models/repository_config.dart';
+import 'package:deploy_gui/models/discovered_application.dart';
 import 'package:deploy_gui/providers/edit_client_provider.dart';
 import 'package:deploy_gui/providers/app_provider.dart';
 import 'package:flutter/material.dart';
@@ -1536,6 +1537,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
                               child: ListView(
                                 padding: const EdgeInsets.all(12),
                                 children: [
+                                  // Discovered Applications Section
+                                  _buildDiscoverySection(provider),
+                                  const SizedBox(height: 20),
                                   _buildExplorerSection(
                                     'PM2 APPS',
                                     Icons.dns,
@@ -1723,6 +1727,226 @@ class _EditClientScreenState extends State<EditClientScreen> {
               )
               .toList(),
       ],
+    );
+  }
+
+  Widget _buildDiscoverySection(EditClientProvider provider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.search,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'DISCOVERED APPS',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '${provider.discoveredApps.length}',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.3),
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Discovery Button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: provider.isDiscovering
+                ? null
+                : () => provider.discoverApplications(_createTempConfig()),
+            icon: provider.isDiscovering
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.search, size: 14),
+            label: Text(
+              provider.isDiscovering ? 'Discovering...' : 'Discover Apps',
+              style: const TextStyle(fontSize: 11),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple.withValues(alpha: 0.3),
+              foregroundColor: Colors.purpleAccent,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            ),
+          ),
+        ),
+        if (provider.discoveryError != null) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Text(
+              'Error: ${provider.discoveryError}',
+              style: const TextStyle(color: Colors.redAccent, fontSize: 10),
+            ),
+          ),
+        ],
+        if (provider.discoveredApps.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ...provider.discoveredApps.map(
+            (app) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: InkWell(
+                onTap: () => _selectDiscoveredApp(provider, app),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: _getCompletenessColor(
+                      app.completenessPercentage,
+                    ).withValues(alpha: 0.1),
+                    border: Border.all(
+                      color: _getCompletenessColor(
+                        app.completenessPercentage,
+                      ).withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.folder,
+                            size: 14,
+                            color: _getCompletenessColor(
+                              app.completenessPercentage,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              app.displayName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (app.isGitRepo)
+                            _buildBadge(Icons.code, Colors.blue),
+                          if (app.hasPm2Process)
+                            _buildBadge(Icons.dns, Colors.green),
+                          if (app.hasNginxConfig)
+                            _buildBadge(Icons.web, Colors.purple),
+                          if (app.hasSSL)
+                            _buildBadge(Icons.lock, Colors.orange),
+                        ],
+                      ),
+                      if (app.domain != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          app.domain!,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 10,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBadge(IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Icon(icon, size: 10, color: color),
+    );
+  }
+
+  Color _getCompletenessColor(int percentage) {
+    if (percentage >= 75) return Colors.green;
+    if (percentage >= 50) return Colors.orange;
+    return Colors.grey;
+  }
+
+  void _selectDiscoveredApp(
+    EditClientProvider provider,
+    DiscoveredApplication app,
+  ) {
+    // Get field values from provider
+    final fieldValues = provider.populateFromDiscoveredApp(app);
+
+    // Update text controllers
+    if (fieldValues.containsKey('repoUrl')) {
+      _repoController.text = fieldValues['repoUrl']!;
+    }
+    if (fieldValues.containsKey('branch')) {
+      _branchController.text = fieldValues['branch']!;
+    }
+    if (fieldValues.containsKey('appName')) {
+      _appNameController.text = fieldValues['appName']!;
+    }
+    if (fieldValues.containsKey('pathOnServer')) {
+      _pathOnServerController.text = fieldValues['pathOnServer']!;
+    }
+    if (fieldValues.containsKey('port')) {
+      _portController.text = fieldValues['port']!;
+    }
+    if (fieldValues.containsKey('domain')) {
+      _domainController.text = fieldValues['domain']!;
+    }
+    if (fieldValues.containsKey('installCommand')) {
+      _installCommandController.text = fieldValues['installCommand']!;
+    }
+    if (fieldValues.containsKey('startCommand')) {
+      _startCommandController.text = fieldValues['startCommand']!;
+    }
+    if (fieldValues.containsKey('gitUsername')) {
+      _gitUsernameController.text = fieldValues['gitUsername']!;
+    }
+    if (fieldValues.containsKey('gitToken')) {
+      _gitTokenController.text = fieldValues['gitToken']!;
+    }
+    if (fieldValues.containsKey('nginxConf')) {
+      _nginxConfController.text = fieldValues['nginxConf']!;
+    }
+    if (fieldValues.containsKey('sslEmail')) {
+      _sslEmailController.text = fieldValues['sslEmail']!;
+    }
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Loaded configuration from: ${app.displayName}'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 

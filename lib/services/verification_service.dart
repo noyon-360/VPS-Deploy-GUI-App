@@ -3,6 +3,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:deploy_gui/models/client_config.dart';
 import 'package:deploy_gui/models/remote_file.dart';
 import 'package:deploy_gui/models/server_tool_status.dart';
+import 'package:deploy_gui/models/discovered_application.dart';
 
 class VerificationService {
   Future<List<ServerToolStatus>> checkInstalledTools(
@@ -222,33 +223,47 @@ class VerificationService {
     }
   }
 
-  String? _extractPm2Port(Map<String, dynamic> p) {
+  String? _extractPm2Port(Map<String, dynamic> process) {
     try {
-      final env = p['pm2_env'];
-      if (env == null) return null;
+      final pm2Env = process['pm2_env'];
+      if (pm2Env == null) return null;
 
-      // 1. Check direct PORT
-      if (env['PORT'] != null) return env['PORT'].toString();
-
-      // 2. Check env variables
-      final actualEnv = env['env'];
-      if (actualEnv != null && actualEnv is Map && actualEnv['PORT'] != null) {
-        return actualEnv['PORT'].toString();
+      // 1. Check environment variables (Most common)
+      final env = pm2Env['env'];
+      if (env != null && env is Map) {
+        if (env['PORT'] != null) return env['PORT'].toString();
+        if (env['port'] != null) return env['port'].toString();
+        // Next.js typical port env
+        if (env['NEXT_PUBLIC_PORT'] != null)
+          return env['NEXT_PUBLIC_PORT'].toString();
       }
 
-      // 3. Check args for --port XXX
-      final args = env['args'];
-      if (args != null && args is List) {
-        final portIdx = args.indexOf('--port');
-        if (portIdx != -1 && portIdx + 1 < args.length) {
-          return args[portIdx + 1].toString();
+      // 2. Check arguments
+      final args = pm2Env['args'];
+      if (args != null) {
+        List<String> argList = [];
+        if (args is List) {
+          argList = args.map((e) => e.toString()).toList();
+        } else if (args is String) {
+          argList = args.split(' ');
         }
-      } else if (args != null && args is String) {
-        final match = RegExp(r'--port\s+(\d+)').firstMatch(args);
-        if (match != null) return match.group(1);
+
+        for (int i = 0; i < argList.length; i++) {
+          final arg = argList[i];
+          if ((arg == '--port' || arg == '-p') && i + 1 < argList.length) {
+            return argList[i + 1];
+          }
+          // Handle --port=3000 format
+          if (arg.startsWith('--port=')) {
+            return arg.split('=')[1];
+          }
+        }
       }
-    } catch (_) {}
-    return null;
+
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<List<String>> getActiveSites(
@@ -517,6 +532,313 @@ class VerificationService {
       onLog?.call('> Error reading file: $e');
     } finally {
       client?.close();
+    }
+  }
+
+  /// Discover all deployed applications in /var/www
+  Future<List<DiscoveredApplication>> discoverApplications(
+    ClientConfig config, {
+    Function(String)? onLog,
+  }) async {
+    SSHClient? client;
+    try {
+      onLog?.call('> Discovering applications in /var/www...');
+      client = await _connect(config);
+
+      // List all directories in /var/www
+      final cmd = 'ls -d /var/www/*/ 2>/dev/null';
+      onLog?.call('>> $cmd');
+      final result = await client.run(cmd);
+      final output = utf8.decode(result).trim();
+
+      if (output.isEmpty) {
+        onLog?.call('> No directories found in /var/www');
+        return [];
+      }
+
+      final directories = output
+          .split('\n')
+          .map((s) => s.trim().replaceAll(RegExp(r'/$'), ''))
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+      onLog?.call('> Found ${directories.length} directories');
+
+      final List<DiscoveredApplication> apps = [];
+
+      // Get PM2 process list once for efficiency
+      final pm2Processes = await _getPm2ProcessList(client, onLog);
+
+      for (final dir in directories) {
+        onLog?.call('> Analyzing: $dir');
+        try {
+          final app = await _analyzeDirectory(client, dir, pm2Processes, onLog);
+          if (app != null) {
+            apps.add(app);
+            onLog?.call('  ✓ ${app.displayName} - ${app.statusSummary}');
+          }
+        } catch (e) {
+          onLog?.call('  ✗ Error analyzing $dir: $e');
+        }
+      }
+
+      onLog?.call('> Discovery complete. Found ${apps.length} applications.');
+      return apps;
+    } catch (e) {
+      onLog?.call('> Error discovering applications: $e');
+      return [];
+    } finally {
+      client?.close();
+    }
+  }
+
+  /// Get PM2 process list as JSON
+  Future<List<Map<String, dynamic>>> _getPm2ProcessList(
+    SSHClient client,
+    Function(String)? onLog,
+  ) async {
+    try {
+      final result = await client.run('pm2 jlist 2>/dev/null');
+      final jsonStr = utf8.decode(result).trim();
+
+      if (jsonStr.isEmpty || !jsonStr.startsWith('[')) {
+        return [];
+      }
+
+      final List<dynamic> processes = jsonDecode(jsonStr);
+      return processes.cast<Map<String, dynamic>>();
+    } catch (e) {
+      onLog?.call('  Warning: Could not fetch PM2 processes: $e');
+      return [];
+    }
+  }
+
+  /// Analyze a single directory to extract all configuration
+  Future<DiscoveredApplication?> _analyzeDirectory(
+    SSHClient client,
+    String path,
+    List<Map<String, dynamic>> pm2Processes,
+    Function(String)? onLog,
+  ) async {
+    // Extract git information
+    final gitInfo = await _extractGitInfo(client, path);
+
+    // Find matching PM2 process
+    final pm2Info = _findPm2Process(pm2Processes, path);
+    if (pm2Info != null && onLog != null) {
+      if (pm2Info['port'] == null) {
+        onLog(
+          '  Warning: PM2 process found but no port detected for ${pm2Info['appName']}',
+        );
+      } else {
+        onLog(
+          '  PM2 process detected: ${pm2Info['appName']} on port ${pm2Info['port']}',
+        );
+      }
+    }
+
+    // Extract Nginx configuration if PM2 port is available
+    Map<String, dynamic>? nginxInfo;
+    if (pm2Info != null && pm2Info['port'] != null) {
+      final port = pm2Info['port'];
+      if (port != null) {
+        nginxInfo = await _extractNginxConfig(client, port);
+      }
+    }
+
+    // Detect install command
+    final installCmd = await _detectInstallCommand(client, path);
+
+    return DiscoveredApplication(
+      pathOnServer: path,
+      repoUrl: gitInfo['repoUrl'],
+      branch: gitInfo['branch'],
+      gitUsername: gitInfo['gitUsername'],
+      gitToken: gitInfo['gitToken'],
+      appName: pm2Info?['appName'],
+      port: pm2Info?['port'],
+      startCommand: pm2Info?['startCommand'],
+      installCommand: installCmd,
+      domain: nginxInfo?['domain'],
+      hasSSL: nginxInfo?['hasSSL'] ?? false,
+      sslEmail: nginxInfo?['sslEmail'],
+      nginxConfigPath: nginxInfo?['configPath'],
+    );
+  }
+
+  /// Extract git repository information
+  Future<Map<String, String?>> _extractGitInfo(
+    SSHClient client,
+    String path,
+  ) async {
+    try {
+      // Check if .git exists
+      final gitCheck = await client.run('[ -d "$path/.git" ] && echo "yes"');
+      if (utf8.decode(gitCheck).trim() != 'yes') {
+        return {'repoUrl': null, 'branch': null};
+      }
+
+      // Get remote URL
+      final repoResult = await client.run(
+        'cd "$path" && git config --get remote.origin.url 2>/dev/null',
+      );
+      String? repoUrl = utf8.decode(repoResult).trim();
+      if (repoUrl.isEmpty) repoUrl = null;
+
+      // Get current branch
+      final branchResult = await client.run(
+        'cd "$path" && git branch --show-current 2>/dev/null',
+      );
+      String? branch = utf8.decode(branchResult).trim();
+      if (branch.isEmpty) branch = null;
+
+      // Parse git credentials from URL if present
+      String? gitUsername;
+      String? gitToken;
+      if (repoUrl != null && repoUrl.contains('@')) {
+        final match = RegExp(r'https://([^:]+):([^@]+)@').firstMatch(repoUrl);
+        if (match != null) {
+          gitUsername = match.group(1);
+          gitToken = match.group(2);
+          // Clean URL for display
+          repoUrl = repoUrl.replaceFirst(
+            RegExp(r'https://[^:]+:[^@]+@'),
+            'https://',
+          );
+        }
+      }
+
+      return {
+        'repoUrl': repoUrl,
+        'branch': branch,
+        'gitUsername': gitUsername,
+        'gitToken': gitToken,
+      };
+    } catch (e) {
+      return {'repoUrl': null, 'branch': null};
+    }
+  }
+
+  /// Find PM2 process matching the directory path
+  Map<String, String?>? _findPm2Process(
+    List<Map<String, dynamic>> processes,
+    String path,
+  ) {
+    try {
+      for (final p in processes) {
+        final pm2Env = p['pm2_env'];
+        if (pm2Env == null) continue;
+
+        final cwd = pm2Env['pm_cwd'] as String?;
+        if (cwd == null || cwd != path) continue;
+
+        // Found matching process
+        final appName = p['name'] as String?;
+        final port = _extractPm2Port(p);
+
+        // Extract start command
+        String? startCommand;
+        final execPath = pm2Env['pm_exec_path'] as String?;
+        final args = pm2Env['args'];
+        if (execPath != null) {
+          startCommand = 'pm2 start $execPath';
+          if (args != null) {
+            if (args is List) {
+              startCommand += ' -- ${args.join(' ')}';
+            } else if (args is String && args.isNotEmpty) {
+              startCommand += ' -- $args';
+            }
+          }
+          if (appName != null) {
+            startCommand += ' --name "$appName"';
+          }
+        }
+
+        return {'appName': appName, 'port': port, 'startCommand': startCommand};
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Extract Nginx configuration for a specific port
+  Future<Map<String, dynamic>?> _extractNginxConfig(
+    SSHClient client,
+    String port,
+  ) async {
+    try {
+      // Find nginx config file that proxies to this port
+      final fileCmd =
+          "grep -rl 'localhost:$port' /etc/nginx/sites-enabled/ 2>/dev/null | head -n 1";
+      final fileResult = await client.run(fileCmd);
+      final configPath = utf8.decode(fileResult).trim();
+
+      if (configPath.isEmpty) return null;
+
+      // Extract server_name
+      final serverNameCmd =
+          "grep -oP 'server_name\\s+\\K[^;]+' $configPath 2>/dev/null | head -n 1";
+      final serverNameResult = await client.run(serverNameCmd);
+      final domain = utf8.decode(serverNameResult).trim();
+
+      // Check for SSL
+      final sslCmd =
+          "grep -q 'ssl_certificate' $configPath 2>/dev/null && echo 'yes' || echo 'no'";
+      final sslResult = await client.run(sslCmd);
+      final hasSSL = utf8.decode(sslResult).trim() == 'yes';
+
+      // Extract SSL email from certbot renewal config
+      String? sslEmail;
+      if (hasSSL && domain.isNotEmpty) {
+        final emailCmd =
+            "grep -oP 'email = \\K.*' /etc/letsencrypt/renewal/$domain.conf 2>/dev/null";
+        final emailResult = await client.run(emailCmd);
+        sslEmail = utf8.decode(emailResult).trim();
+        if (sslEmail.isEmpty) sslEmail = null;
+      }
+
+      return {
+        'domain': domain.isEmpty ? null : domain,
+        'hasSSL': hasSSL,
+        'sslEmail': sslEmail,
+        'configPath': configPath,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Detect install command based on project type
+  Future<String?> _detectInstallCommand(SSHClient client, String path) async {
+    try {
+      // Check for package.json (Node.js)
+      final packageJsonCheck = await client.run(
+        '[ -f "$path/package.json" ] && echo "yes"',
+      );
+      if (utf8.decode(packageJsonCheck).trim() == 'yes') {
+        return 'npm install';
+      }
+
+      // Check for requirements.txt (Python)
+      final requirementsCheck = await client.run(
+        '[ -f "$path/requirements.txt" ] && echo "yes"',
+      );
+      if (utf8.decode(requirementsCheck).trim() == 'yes') {
+        return 'pip install -r requirements.txt';
+      }
+
+      // Check for composer.json (PHP)
+      final composerCheck = await client.run(
+        '[ -f "$path/composer.json" ] && echo "yes"',
+      );
+      if (utf8.decode(composerCheck).trim() == 'yes') {
+        return 'composer install';
+      }
+
+      return null;
+    } catch (e) {
+      return null;
     }
   }
 }

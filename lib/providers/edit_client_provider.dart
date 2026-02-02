@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:deploy_gui/models/remote_file.dart';
 import 'package:deploy_gui/models/server_tool_status.dart';
+import 'package:deploy_gui/models/discovered_application.dart';
 import 'dart:convert'; // For utf8
 import 'package:dartssh2/dartssh2.dart'; // For SSHClient
 import 'dart:async';
@@ -89,6 +90,15 @@ class EditClientProvider with ChangeNotifier {
   bool _checkingTools = false;
   List<ServerToolStatus> get serverTools => _serverTools;
   bool get checkingTools => _checkingTools;
+
+  // Application Discovery
+  List<DiscoveredApplication> _discoveredApps = [];
+  bool _isDiscovering = false;
+  String? _discoveryError;
+
+  List<DiscoveredApplication> get discoveredApps => _discoveredApps;
+  bool get isDiscovering => _isDiscovering;
+  String? get discoveryError => _discoveryError;
 
   Future<void> checkServerPrerequisites(TempClientConfig config) async {
     if (_isBusy) return;
@@ -545,6 +555,7 @@ server {
     _shellLogs.add(
       LogEntry(message: 'Session disconnected', type: LogType.info),
     );
+    _isCenterTerminalVisible = false;
     notifyListeners();
   }
 
@@ -873,6 +884,136 @@ server {
       _isBusy = false;
       notifyListeners();
     }
+  }
+
+  /// Discover deployed applications on the server
+  Future<void> discoverApplications(TempClientConfig config) async {
+    if (!_isVerified) {
+      addLog('Please verify connection first', type: LogType.stderr);
+      return;
+    }
+
+    _isDiscovering = true;
+    _discoveryError = null;
+    _isSidebarVisible = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Starting Application Discovery ---', type: LogType.info);
+
+      final apps = await _verifier.discoverApplications(
+        config,
+        onLog: _handleServiceLog,
+      );
+
+      _discoveredApps = apps;
+
+      if (apps.isEmpty) {
+        addLog('No applications found in /var/www', type: LogType.info);
+      } else {
+        addLog(
+          '--- Discovery Complete: Found ${apps.length} application(s) ---',
+          type: LogType.info,
+        );
+      }
+    } catch (e) {
+      _discoveryError = e.toString();
+      addLog('Discovery failed: $e', type: LogType.stderr);
+    } finally {
+      _isDiscovering = false;
+      notifyListeners();
+    }
+  }
+
+  /// Populate form fields from a discovered application
+  /// Returns a callback that the screen can use to update text controllers
+  Map<String, String> populateFromDiscoveredApp(DiscoveredApplication app) {
+    addLog(
+      '--- Populating form from: ${app.displayName} ---',
+      type: LogType.info,
+    );
+
+    // Build a map of field values to return
+    final Map<String, String> fieldValues = {};
+
+    if (app.repoUrl != null) {
+      fieldValues['repoUrl'] = app.repoUrl!;
+      addLog('  Repository: ${app.repoUrl}');
+    }
+
+    if (app.branch != null) {
+      fieldValues['branch'] = app.branch!;
+      addLog('  Branch: ${app.branch}');
+    }
+
+    if (app.appName != null) {
+      fieldValues['appName'] = app.appName!;
+      addLog('  App Name: ${app.appName}');
+    }
+
+    if (app.pathOnServer.isNotEmpty) {
+      fieldValues['pathOnServer'] = app.pathOnServer;
+      addLog('  Path: ${app.pathOnServer}');
+    }
+
+    if (app.port != null) {
+      fieldValues['port'] = app.port!;
+      addLog('  Port: ${app.port}');
+    }
+
+    if (app.domain != null) {
+      fieldValues['domain'] = app.domain!;
+      addLog('  Domain: ${app.domain}');
+    }
+
+    if (app.installCommand != null) {
+      fieldValues['installCommand'] = app.installCommand!;
+      addLog('  Install Command: ${app.installCommand}');
+    }
+
+    if (app.startCommand != null) {
+      fieldValues['startCommand'] = app.startCommand!;
+      addLog('  Start Command: ${app.startCommand}');
+    }
+
+    if (app.gitUsername != null) {
+      fieldValues['gitUsername'] = app.gitUsername!;
+      addLog('  Git Username: ${app.gitUsername}');
+    }
+
+    if (app.gitToken != null) {
+      fieldValues['gitToken'] = app.gitToken!;
+      addLog('  Git Token: [HIDDEN]');
+    }
+
+    if (app.nginxConfigPath != null) {
+      fieldValues['nginxConf'] = app.nginxConfigPath!;
+      addLog('  Nginx Config: ${app.nginxConfigPath}');
+    }
+
+    if (app.sslEmail != null) {
+      fieldValues['sslEmail'] = app.sslEmail!;
+      addLog('  SSL Email: ${app.sslEmail}');
+    }
+
+    // Update SSL state
+    if (app.hasSSL) {
+      _enableSSL = true;
+      addLog('  SSL: Enabled');
+    }
+
+    addLog('--- Form populated successfully ---', type: LogType.info);
+    notifyListeners();
+
+    return fieldValues;
+  }
+
+  /// Clear discovered applications list
+  void clearDiscoveredApps() {
+    _discoveredApps.clear();
+    _discoveryError = null;
+    notifyListeners();
   }
 
   @override

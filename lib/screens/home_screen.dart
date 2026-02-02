@@ -247,21 +247,21 @@ class _ClientCardState extends State<ClientCard> {
                 const Spacer(),
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _startDeployment(context, 'initial'),
-                        icon: const Icon(
-                          Icons.rocket_launch_outlined,
-                          size: 16,
-                        ),
-                        label: const Text('Initial'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withAlpha(50)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
+                    // Expanded(
+                    //   child: OutlinedButton.icon(
+                    //     onPressed: () => _startDeployment(context, 'initial'),
+                    //     icon: const Icon(
+                    //       Icons.rocket_launch_outlined,
+                    //       size: 16,
+                    //     ),
+                    //     label: const Text('Initial'),
+                    //     style: OutlinedButton.styleFrom(
+                    //       foregroundColor: Colors.white,
+                    //       side: BorderSide(color: Colors.white.withAlpha(50)),
+                    //     ),
+                    //   ),
+                    // ),
+                    // const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _startDeployment(context, 'update'),
