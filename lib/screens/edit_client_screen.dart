@@ -46,7 +46,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
       text: c?.pathOnServer ?? '/var/www/backend',
     );
     _nginxConfController = TextEditingController(
-      text: c?.nginxConf ?? '/etc/nginx/sites-available/dashboard',
+      text: c?.nginxConf ?? '/etc/nginx/sites-available/backend',
     );
     _installCommandController = TextEditingController(
       text: c?.installCommand ?? 'npm install',
@@ -120,97 +120,167 @@ class _EditClientScreenState extends State<EditClientScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.client == null ? 'Add New Client' : 'Edit Client'),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _buildTextField(
-                _nameController,
-                'Client Name',
-                'e.g. My Website',
-              ),
-              _buildTextField(
-                _serverAliasController,
-                'SSH Connection (Alias or User@IP)',
-                'e.g. root@76.13.x.x or my-alias',
-              ),
-              _buildTextField(
-                _repoController,
-                'GitHub Repo (SSH)',
-                'git@github.com:user/repo.git',
-              ),
-              _buildTextField(_branchController, 'Branch', 'main'),
-              _buildTextField(_domainController, 'Domain', 'api.example.com'),
-              _buildTextField(_portController, 'Port', '5001'),
-              _buildTextField(_appNameController, 'App Name (PM2)', 'backend'),
-              _buildTextField(
-                _pathOnServerController,
-                'Path on Server',
-                '/var/www/backend',
-              ),
-              _buildTextField(
-                _nginxConfController,
-                'NGINX Config Path',
-                '/etc/nginx/sites-available/dashboard',
-              ),
-              _buildTextField(
-                _installCommandController,
-                'Install Command',
-                'e.g. npm install or yarn install',
-              ),
-              _buildTextField(
-                _startCommandController,
-                'Start Command',
-                'e.g. pm2 start server.js --name "{APP_NAME}"',
-              ),
-              _buildTextField(
-                _passwordController,
-                'SSH Password (Alternative to Keys)',
-                'Leave blank to use SSH Keys',
-                isPassword: true,
-              ),
-              const Divider(height: 48),
-              Text(
-                'Git Credentials (HTTPS only)',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                _gitUsernameController,
-                'Git Username',
-                'Your GitHub/GitLab username',
-              ),
-              _buildTextField(
-                _gitTokenController,
-                'Git Token / Password',
-                'Personal Access Token (Recommended)',
-                isPassword: true,
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.all(16),
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _buildSectionHeader('General Information', Icons.info_outline),
+                _buildCardLayout([
+                  _buildTextField(_nameController, 'Client Name', 'My Website'),
+                  _buildTextField(
+                    _serverAliasController,
+                    'SSH Destination',
+                    'root@1.2.3.4',
                   ),
-                  child: const Text(
-                    'Save Configuration',
-                    style: TextStyle(fontSize: 16),
+                ]),
+
+                _buildSectionHeader(
+                  'Deployment Settings',
+                  Icons.settings_outlined,
+                ),
+                _buildCardLayout([
+                  _buildTextField(
+                    _repoController,
+                    'Git Repository',
+                    'git@github.com:user/repo.git',
+                  ),
+                  _buildTextField(_branchController, 'Branch', 'main'),
+                  _buildTextField(
+                    _domainController,
+                    'Domain',
+                    'api.example.com',
+                  ),
+                  _buildTextField(_portController, 'App Port', '5001'),
+                  _buildTextField(
+                    _appNameController,
+                    'App Name (PM2)',
+                    'backend',
+                  ),
+                  _buildTextField(
+                    _pathOnServerController,
+                    'Server Path',
+                    '/var/www/backend',
+                  ),
+                  _buildTextField(
+                    _nginxConfController,
+                    'NGINX Config Path',
+                    '/etc/nginx/sites-enabled/default',
+                  ),
+                ]),
+
+                _buildSectionHeader('Commands', Icons.terminal_outlined),
+                _buildCardLayout([
+                  _buildTextField(
+                    _installCommandController,
+                    'Install Command',
+                    'npm install',
+                  ),
+                  _buildTextField(
+                    _startCommandController,
+                    'Start Command',
+                    'pm2 start...',
+                  ),
+                ]),
+
+                _buildSectionHeader('Credentials', Icons.key_outlined),
+                _buildCardLayout([
+                  _buildTextField(
+                    _passwordController,
+                    'SSH Password',
+                    'Leave blank to use keys',
+                    isPassword: true,
+                  ),
+                  _buildTextField(
+                    _gitUsernameController,
+                    'Git Username',
+                    'Username',
+                  ),
+                  _buildTextField(
+                    _gitTokenController,
+                    'Git Token',
+                    'Token',
+                    isPassword: true,
+                  ),
+                ]),
+
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      textStyle: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    child: const Text('Save Configuration'),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 48),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16, top: 24, left: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20, color: Colors.white.withAlpha(200)),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Colors.white.withAlpha(200),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardLayout(List<Widget> children) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        bool isWide = constraints.maxWidth > 600;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Wrap(
+              spacing: 24,
+              runSpacing: 0,
+              children: children
+                  .map(
+                    (child) => SizedBox(
+                      width: isWide
+                          ? (constraints.maxWidth - 72) / 2
+                          : double.infinity,
+                      child: child,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -221,17 +291,36 @@ class _EditClientScreenState extends State<EditClientScreen> {
     bool isPassword = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 20),
       child: TextFormField(
         controller: controller,
         obscureText: isPassword,
+        style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          border: const OutlineInputBorder(),
+          alignLabelWithHint: true,
+          filled: true,
+          fillColor: Colors.black.withAlpha(20),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.white, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
         ),
         validator: (value) {
-          if (isPassword) return null; // Password is optional
+          if (isPassword) return null;
           if (value == null || value.isEmpty) {
             return 'Please enter $label';
           }

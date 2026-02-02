@@ -82,32 +82,54 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return AlertDialog(
-      title: Text(
-        '${widget.mode == 'initial' ? 'Initial' : 'Update'} Deployment: ${widget.client.name}',
+      backgroundColor: theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: Row(
+        children: [
+          Icon(
+            widget.mode == 'initial' ? Icons.rocket_launch : Icons.sync,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Deploying: ${widget.client.name}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
       ),
       content: SizedBox(
-        width: 600,
-        height: 400,
+        width: 700,
+        height: 450,
         child: Column(
           children: [
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.black.withAlpha(150),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withAlpha(10)),
                 ),
                 child: ListView.builder(
                   controller: _scrollController,
                   itemCount: _logs.length,
                   itemBuilder: (context, index) {
-                    return Text(
-                      _logs[index],
-                      style: const TextStyle(
-                        color: Colors.lightGreenAccent,
-                        fontFamily: 'Courier',
-                        fontSize: 12,
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text(
+                        _logs[index],
+                        style: TextStyle(
+                          color: _logs[index].contains('Error')
+                              ? Colors.redAccent
+                              : Colors.lightGreenAccent.shade100,
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                        ),
                       ),
                     );
                   },
@@ -115,17 +137,51 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
               ),
             ),
             if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(
-                  'Error: $_error',
-                  style: const TextStyle(color: Colors.redAccent),
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withAlpha(30),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             if (_isDeploying)
-              const Padding(
-                padding: EdgeInsets.only(top: 16.0),
-                child: LinearProgressIndicator(),
+              Padding(
+                padding: const EdgeInsets.only(top: 20.0),
+                child: Column(
+                  children: [
+                    LinearProgressIndicator(
+                      backgroundColor: Colors.white.withAlpha(10),
+                      color: theme.colorScheme.primary,
+                      minHeight: 6,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Executing deployment commands...',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -133,7 +189,16 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
       actions: [
         TextButton(
           onPressed: _isDeploying ? null : () => Navigator.pop(context),
-          child: const Text('Close'),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+          child: Text(
+            'Close',
+            style: TextStyle(
+              color: _isDeploying ? Colors.grey : theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ],
     );

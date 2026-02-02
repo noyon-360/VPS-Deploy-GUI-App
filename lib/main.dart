@@ -21,10 +21,43 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6750A4),
+          seedColor: Colors.grey,
+          primary: Colors.white,
+          onPrimary: Colors.black,
+          secondary: Colors.grey.shade400,
           brightness: Brightness.dark,
+          surface: const Color(0xFF1E1E1E),
+          onSurface: Colors.white,
         ),
-        textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+        scaffoldBackgroundColor: Colors.black,
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1E1E1E),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.white.withAlpha(20), width: 1),
+          ),
+        ),
+        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: BorderSide(color: Colors.white.withAlpha(50)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
       ),
       home: const HomeScreen(),
     );
