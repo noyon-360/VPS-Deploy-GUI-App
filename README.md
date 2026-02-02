@@ -1,24 +1,50 @@
 # 🚀 Easy Deploy Tool
 
-A powerful, local-only Flutter Desktop application designed to manage and automate deployments for multiple clients across various servers. No more repeating manual SSH steps—deploy your backends with a single click.
+A powerful, local-only Flutter Desktop application designed to automate backend and dashboard deployments for Node.js and NestJS projects on VPS servers.
+
+> **"I genuinely love solving problems. I always look for ways to reduce repetitive work so I can focus more on building logic and improving systems."**
+
+## 💡 Why This Tool Exists
+
+I built this application to solve a real problem I faced while deploying over 20 backend and dashboard applications on VPS servers. The process was always manual and repetitive—typing the same commands, setting up the same configurations, and handling the same server setup steps again and again.
+
+While CI/CD helps with updates, the initial server configuration and first-time setup remained a bottleneck. I initially used Bash scripts, but they became complex to manage.
+
+This GUI-based application automates those bash commands in a structured, user-friendly way, storing client credentials locally and executing setup commands automatically. It turns a manual, error-prone process into a consistent, one-click operation.
 
 ## ✨ Key Features
 
-- **📂 Multi-Client Management**: Save and organize server details, repo URLs, and paths for unlimited clients.
+- **✅ Automated Setup**: Installs and checks for essential tools (Nginx, Git, Node.js, PM2) automatically.
+- **🔍 Server Discovery**:
+  - **Auto-Detect Applications**: Scans `/var/www` to find existing deployments.
+  - **Smart Identification**: Identifies Node.js/PM2 processes, their ports, and associated Nginx domains.
+  - **Git Info Extraction**: Automatically pulls repository URLs and branch names from the server.
+- **📂 Multi-Project Management**: Organize multiple clients and projects with local credential storage.
 - **🔐 Flexible Authentication**:
-  - **SSH Keys**: Seamlessly uses your system's existing SSH configuration (`~/.ssh/config`).
-  - **SSH Passwords**: Support for servers where keys aren't yet configured (powered by `dartssh2`).
-- **📦 Private Repo Support**: Authenticated HTTPS cloning using Git Usernames and Personal Access Tokens (PAT).
-- **🛠️ Customizable Commands**: Define your own installation (e.g., `npm install`, `yarn`) and start commands (e.g., `pm2 start server.js`).
-- **📜 Real-Time Logs**: Watch live output from your server during deployment via a built-in terminal view.
-- **🌑 Premium Design**: Sleek Material 3 dark theme with modern typography.
+  - **SSH Keys**: Uses your system's `~/.ssh/config` for seamless access.
+  - **SSH Passwords**: Fallback support for servers using password authentication.
+- **🛠️ Verification & Health Checks**: instantly verify if `nginx`, `git`, `node`, or `pm2` are installed and running correctly.
+- **📜 Interactive Logs**: Watch live command output and deployment logs in real-time.
+- **🌑 Premium Design**: A user-friendly, dark-themed interface built with Flutter.
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/9eb8bf5f-a439-452e-96a6-4321fa5f9884" width="45%" />
+  <img src="https://github.com/user-attachments/assets/407fff2f-88f4-4aa8-8c10-89d71893490a" width="45%" />
+  <img src="https://github.com/user-attachments/assets/ae5f48fc-8ddd-4d66-ae16-538a622bcf60" width="45%" />
+  <img src="https://github.com/user-attachments/assets/fbfedb03-92ee-4404-ac25-6d4f55984004" width="45%" />
+  <img src="https://github.com/user-attachments/assets/570f1e3f-ecd5-403b-82f3-a73d7dd96fbd" width="45%" />
+  <img src="https://github.com/user-attachments/assets/96eeaaca-e76b-44f3-b0d9-e2e869809e93" width="45%" />
+  <img src="https://github.com/user-attachments/assets/d93f67fd-57eb-40a7-a0e7-58b72a4ea903" width="91%" />
+</p>
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - **Flutter SDK**: Installed and configured on your machine.
-- **SSH Client**: Ensure `ssh` is available in your terminal (included in Windows 10/11).
-- **Server Access**: A non-root user with `sudo` privileges on the destination server.
+- **SSH Client**: Ensure `ssh` is available in your terminal.
+- **Server Access**: A non-root user with `sudo` privileges on the destination VPS.
 
 ### Installation
 1. Clone this project to your local machine.
@@ -35,19 +61,20 @@ A powerful, local-only Flutter Desktop application designed to manage and automa
 ## 📖 Usage Guide
 
 ### 1. Adding a Client
-Click the **+** button. You'll need to provide:
-- **SSH Connection**: Either an alias from your `~/.ssh/config` or a direct `user@ip`.
-- **Git Repo**: Use HTTPS for token-based authentication or SSH if your keys are on the server.
-- **Commands**: Defaults are set for Node.js/PM2, but you can change them for any technology.
+Click the **+** button to add a new server connection. You can use an SSH alias (from your config) or a direct `user@ip` address.
 
-### 2. Performing a Deploy
-- **Initial Deploy**: Use this for fresh servers. It installs Git, Nginx, Node.js, and PM2 automatically.
-- **Update Deploy**: Use this for daily updates. It pulls the latest code, runs your install command, and restarts the app.
+### 2. Discover & Verify
+Use the **Verification** tools to scan your server. The app will tell you what's already installed and list any running applications it finds, including their ports and domain info.
+
+### 3. Deploying Projects
+- **Clone & Setup**: Automatically clone private repositories using saved Git credentials.
+- **Deploy**: Run your custom install (e.g., `npm install`) and start commands (e.g., `pm2 start...`) with a single click.
+- **Update**: Pull the latest code and restart your application without logging in manually.
 
 ---
 
 ## 🛠️ Technology Stack
-- **Framework**: [Flutter](https://flutter.dev) (Desktop)
+- **Framework**: [Flutter](https://flutter.dev) (Desktop for Windows)
 - **State Management**: [Provider](https://pub.dev/packages/provider)
-- **SSH**: [dartssh2](https://pub.dev/packages/dartssh2)
+- **SSH Integration**: [dartssh2](https://pub.dev/packages/dartssh2)
 - **Storage**: JSON-based local persistence
