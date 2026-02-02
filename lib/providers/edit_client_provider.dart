@@ -4,13 +4,21 @@ import 'package:deploy_gui/services/verification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:deploy_gui/models/remote_file.dart';
+import 'package:deploy_gui/models/server_tool_status.dart';
+import 'dart:convert'; // For utf8
+import 'package:dartssh2/dartssh2.dart'; // For SSHClient
 
 class EditClientProvider with ChangeNotifier {
   final VerificationService _verifier = VerificationService();
   bool _disposed = false;
-  bool _isBusy = false; // Global busy state for command execution
+  // Global busy state for command execution
+  bool _isBusy = false;
+
+  // Cloning state
+  bool _cloning = false;
 
   bool get isBusy => _isBusy;
+  bool get cloning => _cloning;
 
   // Form State
   String _deploymentType = 'backend';
@@ -66,6 +74,317 @@ class EditClientProvider with ChangeNotifier {
   final List<LogEntry> _logs = [];
   List<LogEntry> get logs => List.unmodifiable(_logs);
   final ScrollController logScrollController = ScrollController();
+
+  // Step 1: Prerequisites
+  List<ServerToolStatus> _serverTools = [];
+  bool _checkingTools = false;
+  List<ServerToolStatus> get serverTools => _serverTools;
+  bool get checkingTools => _checkingTools;
+
+  Future<void> checkServerPrerequisites(ClientConfig config) async {
+    if (_isBusy) return;
+    _isBusy = true;
+    _checkingTools = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Checking Server Prerequisites ---', type: LogType.info);
+      final results = await _verifier.checkInstalledTools(
+        config,
+        onLog: _handleServiceLog,
+      );
+      _serverTools = results;
+
+      final allInstalled = results.every((t) => t.isInstalled);
+      if (allInstalled) {
+        addLog(
+          '--- All prerequisites found. Ready for deployment. ---',
+          type: LogType.info,
+        );
+      } else {
+        addLog(
+          '--- Some tools are missing. Please install them. ---',
+          type: LogType.stderr,
+        );
+      }
+    } finally {
+      _checkingTools = false;
+      _isBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> installMissingTools(ClientConfig config) async {
+    if (_isBusy) return;
+    _isBusy = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Installing Missing Tools ---', type: LogType.info);
+      addLog(
+        '>> sudo apt update && sudo apt install -y git nginx nodejs npm && sudo npm install -g pm2',
+        type: LogType.command,
+      );
+
+      await _verifier.runInteractiveCommand(
+        config,
+        'sudo apt update && sudo apt install -y git nginx nodejs npm && sudo npm install -g pm2',
+        onOutput: (msg, isError) {
+          addLog(msg, type: isError ? LogType.stderr : LogType.stdout);
+        },
+      );
+
+      addLog(
+        '--- Installation command completed. Re-checking... ---',
+        type: LogType.info,
+      );
+      _isBusy = false; // Release lock briefly for re-check call
+      await checkServerPrerequisites(config);
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> cloneProject(ClientConfig config) async {
+    if (_cloning) return;
+    _cloning = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Starting Project Setup ---', type: LogType.info);
+
+      // 1. Validate inputs
+      if (config.repo.isEmpty) {
+        throw Exception('Git repository URL is required');
+      }
+      if (config.pathOnServer.isEmpty) {
+        throw Exception('Destination path is required');
+      }
+
+      final client = await _verifier.connect(config);
+
+      // 2. Check if destination exists
+      addLog('> Checking destination: ${config.pathOnServer}');
+      var checkDir = await client.run(
+        'if [ -d "${config.pathOnServer}" ]; then echo "exists"; fi',
+      );
+      String checkDirOutput = utf8.decode(checkDir).trim();
+
+      if (checkDirOutput == 'exists') {
+        addLog('> Destination directory already exists.', type: LogType.stderr);
+        // Optional: Ask user if they want to pull instead? For now, we'll try to pull if it's a git repo
+        addLog('> Attempting to pull latest changes...');
+        await _runCommand(client, 'cd "${config.pathOnServer}" && git pull');
+      } else {
+        // 3. Clone repository
+        addLog('> Cloning repository...');
+
+        // Handle auth if provided
+        String repoUrl = config.repo;
+        if (config.gitUsername != null && config.gitToken != null) {
+          // Inserting credentials into URL: https://user:token@github.com/StartBlock/repo.git
+          if (repoUrl.startsWith('https://')) {
+            final cleanUrl = repoUrl.substring(8);
+            repoUrl =
+                'https://${config.gitUsername}:${config.gitToken}@$cleanUrl';
+          }
+        }
+
+        final parentDir = config.pathOnServer.substring(
+          0,
+          config.pathOnServer.lastIndexOf('/'),
+        );
+        await _runCommand(client, 'mkdir -p "$parentDir"');
+
+        await _runCommand(
+          client,
+          'git clone -b ${config.branch} "$repoUrl" "${config.pathOnServer}"',
+        );
+      }
+
+      // 4. Install Dependencies
+      addLog('> Installing dependencies...');
+      await _runCommand(
+        client,
+        'cd "${config.pathOnServer}" && ${config.installCommand}',
+      );
+
+      addLog(
+        '--- Project Setup Completed Successfully ---',
+        type: LogType.info,
+      );
+
+      client.close();
+    } catch (e) {
+      addLog('Project Setup Failed: $e', type: LogType.stderr);
+    } finally {
+      _cloning = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> deployApp(ClientConfig config) async {
+    if (_isBusy) return;
+    _isBusy = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Starting Application Deployment ---', type: LogType.info);
+
+      // Validate inputs
+      if (config.appName.isEmpty) throw Exception('App name is required');
+      if (config.startCommand.isEmpty)
+        throw Exception('Start command is required');
+      if (config.pathOnServer.isEmpty)
+        throw Exception('Project path is required');
+
+      final client = await _verifier.connect(config);
+
+      // 1. Stop/Delete existing if needed (optional, safer to just start/restart usually handling by pm2)
+      // But let's check if it exists first?
+      // For now, we'll assume the user provided a valid start command which might include specific flags.
+      // Often, 'pm2 start ...' works even if running (it might duplicate), so 'pm2 restart' or 'delete' first is better.
+      // Let's try to be smart: Check if running, if so restart. If not, start.
+      // Actually, relying on the user's "Start Command" is most flexible.
+
+      addLog('> Executing start command in ${config.pathOnServer}...');
+
+      // Inject variables into command if they exist (simple replacement)
+      String cmd = config.startCommand
+          .replaceAll('{APP_NAME}', config.appName)
+          .replaceAll('{PORT}', config.port);
+
+      await _runCommand(client, 'cd "${config.pathOnServer}" && $cmd');
+
+      // 2. Save PM2 list
+      addLog('> Saving PM2 list...');
+      await _runCommand(client, 'pm2 save');
+
+      addLog('--- Deployment Completed Successfully ---', type: LogType.info);
+      client.close();
+
+      // Refresh state to show new app in sidebar
+      await refreshServerState(config);
+    } catch (e) {
+      addLog('Deployment Failed: $e', type: LogType.stderr);
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> configureNginxAndSSL(ClientConfig config) async {
+    if (_isBusy) return;
+    _isBusy = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Starting Domain & SSL Configuration ---', type: LogType.info);
+
+      if (config.domain.isEmpty || config.domain == 'example.com') {
+        throw Exception('Valid domain name is required');
+      }
+      if (config.port.isEmpty) throw Exception('Port is required');
+
+      final client = await _verifier.connect(config);
+
+      // 1. Create Nginx Config
+      // Basic reverse proxy config
+      final nginxConfig =
+          '''
+server {
+    listen 80;
+    server_name ${config.domain};
+
+    location / {
+        proxy_pass http://localhost:${config.port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+''';
+
+      addLog('> Creating Nginx configuration for ${config.domain}...');
+
+      // Write to temp file then move to sites-available (to avoid permission issues needing sudo for echo)
+      // Actually we can use sudo bash -c "echo ... > file"
+      // Escaping quotes is tricky. simpler to write to /tmp then move.
+      final tmpFile = '/tmp/${config.domain}';
+      await client.run("echo '$nginxConfig' > $tmpFile");
+
+      final availablePath = '/etc/nginx/sites-available/${config.domain}';
+      final enabledPath = '/etc/nginx/sites-enabled/${config.domain}';
+
+      await _runCommand(client, 'sudo mv $tmpFile $availablePath');
+      await _runCommand(client, 'sudo ln -sf $availablePath $enabledPath');
+
+      // Check config syntax
+      addLog('> Verifying Nginx configuration...');
+      await _runCommand(client, 'sudo nginx -t');
+
+      // Reload Nginx
+      addLog('> Reloading Nginx...');
+      await _runCommand(client, 'sudo systemctl reload nginx');
+
+      // 2. SSL Setup (Certbot)
+      if (config.enableSSL) {
+        if (config.sslEmail == null || config.sslEmail!.isEmpty) {
+          throw Exception('Email is required for SSL certificate');
+        }
+
+        addLog('> Requesting SSL certificate via Certbot...');
+        // Install certbot if missing? We assumed it's there or user installed it.
+        // Let's assume standard Ubuntu: sudo apt install python3-certbot-nginx
+        // We'll try running it.
+
+        // Non-interactive mode
+        final certbotCmd =
+            'sudo certbot --nginx -d ${config.domain} --non-interactive --agree-tos -m ${config.sslEmail} --redirect';
+        await _runCommand(client, certbotCmd);
+      }
+
+      addLog(
+        '--- Configuration Completed Successfully ---',
+        type: LogType.info,
+      );
+      client.close();
+
+      await refreshServerState(config);
+    } catch (e) {
+      addLog('Configuration Failed: $e', type: LogType.stderr);
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _runCommand(SSHClient client, String command) async {
+    addLog('>> $command');
+    final session = await client.execute(command);
+
+    // Stream stdout and stderr
+    session.stdout.listen((data) {
+      addLog(utf8.decode(data).trim());
+    });
+
+    session.stderr.listen((data) {
+      addLog(utf8.decode(data).trim(), type: LogType.stderr);
+    });
+
+    await session.done;
+    if (session.exitCode != 0) {
+      throw Exception('Command failed with exit code ${session.exitCode}');
+    }
+  }
 
   void setDeploymentType(String type) {
     _deploymentType = type;

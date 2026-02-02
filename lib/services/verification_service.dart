@@ -2,8 +2,63 @@ import 'dart:convert';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:deploy_gui/models/client_config.dart';
 import 'package:deploy_gui/models/remote_file.dart';
+import 'package:deploy_gui/models/server_tool_status.dart';
 
 class VerificationService {
+  Future<List<ServerToolStatus>> checkInstalledTools(
+    ClientConfig config, {
+    required Function(String) onLog,
+  }) async {
+    final tools = ['nginx', 'git', 'node', 'pm2'];
+    final List<ServerToolStatus> results = [];
+
+    for (final tool in tools) {
+      onLog('>> Checking $tool...');
+      try {
+        final client = await connect(config); // Use public connect
+
+        String cmd = '';
+        if (tool == 'nginx') cmd = 'nginx -v';
+        if (tool == 'git') cmd = 'git --version';
+        if (tool == 'node') cmd = 'node -v';
+        if (tool == 'pm2') cmd = 'pm2 -v';
+
+        final result = await client.run('$cmd 2>&1');
+        final output = utf8.decode(result).trim();
+
+        client.close();
+
+        final isInstalled =
+            !output.contains('command not found') &&
+            !output.contains('no such file') &&
+            output.isNotEmpty;
+
+        results.add(
+          ServerToolStatus(
+            name: tool,
+            isInstalled: isInstalled,
+            version: isInstalled ? output : null,
+          ),
+        );
+
+        if (isInstalled) {
+          onLog('> $tool found: $output');
+        } else {
+          onLog('> $tool NOT found.');
+        }
+      } catch (e) {
+        onLog('> $tool check failed: $e');
+        results.add(ServerToolStatus(name: tool, isInstalled: false));
+      }
+    }
+    return results;
+  }
+
+  // Expose connect publicly
+  Future<SSHClient> connect(ClientConfig config) async {
+    return _connect(config);
+  }
+
   Future<bool> verifyConnection(
     ClientConfig config, {
     Function(String)? onLog,

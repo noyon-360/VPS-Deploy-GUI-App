@@ -192,14 +192,27 @@ class _EditClientScreenState extends State<EditClientScreen> {
       id: 'temp',
       name: 'temp',
       serverAlias: _serverAliasController.text,
-      repo: '',
-      appName: '',
-      pathOnServer: '',
-      nginxConf: '',
-      domain: '',
+      repo: _repoController.text,
+      branch: _branchController.text,
+      appName: _appNameController.text,
+      pathOnServer: _pathOnServerController.text,
+      nginxConf: _nginxConfController.text,
+      domain: _domainController.text,
+      port: _portController.text,
+      installCommand: _installCommandController.text,
+      startCommand: _startCommandController.text,
       password: _passwordController.text.isEmpty
           ? null
           : _passwordController.text,
+      gitUsername: _gitUsernameController.text.isEmpty
+          ? null
+          : _gitUsernameController.text,
+      gitToken: _gitTokenController.text.isEmpty
+          ? null
+          : _gitTokenController.text,
+      sslEmail: _sslEmailController.text.isEmpty
+          ? null
+          : _sslEmailController.text,
     );
   }
 
@@ -236,360 +249,65 @@ class _EditClientScreenState extends State<EditClientScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              _buildSectionHeader(
-                                'Credentials & Connection',
-                                Icons.key_outlined,
-                              ),
-                              _buildCardLayout([
-                                _buildTextField(
-                                  _serverAliasController,
-                                  'SSH Destination',
-                                  'root@1.2.3.4',
-                                ),
-                                _buildTextField(
-                                  _passwordController,
-                                  'SSH Password',
-                                  'Leave blank to use keys',
-                                  isPassword: true,
-                                ),
-                              ]),
-                              const SizedBox(height: 16),
-                              Center(
-                                child: ElevatedButton.icon(
-                                  onPressed: provider.isVerifying
-                                      ? null
-                                      : () => provider.testConnection(
-                                          _createTempConfig(),
-                                        ),
-                                  icon: provider.isVerifying
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : Icon(
-                                          provider.isVerified
-                                              ? Icons.check_circle
-                                              : Icons.wifi,
-                                          color: provider.isVerified
-                                              ? Colors.green
-                                              : Colors.white,
-                                        ),
-                                  label: Text(
-                                    provider.isVerified
-                                        ? 'Connected'
-                                        : 'Test Connection',
-                                    style: TextStyle(
-                                      color: provider.isVerified
-                                          ? Colors.green
-                                          : Colors.white,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (provider.verificationStatus != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Center(
-                                    child: Text(
-                                      provider.verificationStatus!,
-                                      style: TextStyle(
-                                        color: provider.isVerified
-                                            ? Colors.green
-                                            : Colors.redAccent,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              _buildConnectionSection(provider),
 
-                              // if (provider.isVerified &&
-                              //     (provider.runningApps.isNotEmpty ||
-                              //         provider.activeSites.isNotEmpty))
-                              //   Padding(
-                              //     padding: const EdgeInsets.only(top: 16.0),
-                              //     child: Column(
-                              //       crossAxisAlignment:
-                              //           CrossAxisAlignment.start,
-                              //       children: [
-                              //         if (provider.runningApps.isNotEmpty) ...[
-                              //           Text(
-                              //             'Running PM2 Apps:',
-                              //             style: TextStyle(
-                              //               color: Colors.white.withValues(
-                              //                 alpha: 0.7,
-                              //               ),
-                              //               fontSize: 12,
-                              //               fontWeight: FontWeight.bold,
-                              //             ),
-                              //           ),
-                              //           const SizedBox(height: 4),
-                              //           Wrap(
-                              //             spacing: 8,
-                              //             runSpacing: 4,
-                              //             children: provider.runningApps
-                              //                 .map(
-                              //                   (app) => Container(
-                              //                     padding:
-                              //                         const EdgeInsets.symmetric(
-                              //                           horizontal: 8,
-                              //                           vertical: 4,
-                              //                         ),
-                              //                     decoration: BoxDecoration(
-                              //                       color: Colors.green
-                              //                           .withValues(alpha: 0.1),
-                              //                       borderRadius:
-                              //                           BorderRadius.circular(
-                              //                             8,
-                              //                           ),
-                              //                       border: Border.all(
-                              //                         color: Colors.green
-                              //                             .withValues(
-                              //                               alpha: 0.3,
-                              //                             ),
-                              //                       ),
-                              //                     ),
-                              //                     child: Text(
-                              //                       app,
-                              //                       style: const TextStyle(
-                              //                         fontSize: 11,
-                              //                         color: Colors.greenAccent,
-                              //                       ),
-                              //                     ),
-                              //                   ),
-                              //                 )
-                              //                 .toList(),
-                              //           ),
-                              //           const SizedBox(height: 12),
-                              //         ],
-                              //         if (provider.activeSites.isNotEmpty) ...[
-                              //           Text(
-                              //             'Active Nginx Sites:',
-                              //             style: TextStyle(
-                              //               color: Colors.white.withValues(
-                              //                 alpha: 0.7,
-                              //               ),
-                              //               fontSize: 12,
-                              //               fontWeight: FontWeight.bold,
-                              //             ),
-                              //           ),
-                              //           const SizedBox(height: 4),
-                              //           Wrap(
-                              //             spacing: 8,
-                              //             runSpacing: 4,
-                              //             children: provider.activeSites
-                              //                 .map(
-                              //                   (site) => Container(
-                              //                     padding:
-                              //                         const EdgeInsets.symmetric(
-                              //                           horizontal: 8,
-                              //                           vertical: 4,
-                              //                         ),
-                              //                     decoration: BoxDecoration(
-                              //                       color: Colors.blue
-                              //                           .withValues(alpha: 0.1),
-                              //                       borderRadius:
-                              //                           BorderRadius.circular(
-                              //                             8,
-                              //                           ),
-                              //                       border: Border.all(
-                              //                         color: Colors.blue
-                              //                             .withValues(
-                              //                               alpha: 0.3,
-                              //                             ),
-                              //                       ),
-                              //                     ),
-                              //                     child: Text(
-                              //                       site,
-                              //                       style: const TextStyle(
-                              //                         fontSize: 11,
-                              //                         color: Colors
-                              //                             .lightBlueAccent,
-                              //                       ),
-                              //                     ),
-                              //                   ),
-                              //                 )
-                              //                 .toList(),
-                              //           ),
-                              //         ],
-                              //       ],
-                              //     ),
-                              //   ),
                               if (provider.isVerified) ...[
-                                _buildSectionHeader(
-                                  'General Information',
-                                  Icons.info_outline,
+                                const Divider(
+                                  height: 48,
+                                  thickness: 1,
+                                  color: Colors.white10,
                                 ),
-                                _buildCardLayout([
-                                  _buildTextField(
-                                    _nameController,
-                                    'Client Name',
-                                    'My Website',
-                                  ),
-                                  _buildDeploymentTypeDropdown(provider),
-                                ]),
 
-                                _buildSectionHeader(
-                                  'Deployment Settings',
-                                  Icons.settings_outlined,
+                                // Step 1: Prerequisites
+                                _buildStepHeader(
+                                  1,
+                                  'Prerequisites Check',
+                                  'Verify server tools (Nginx, Git, Node, PM2)',
+                                  provider.serverTools.isNotEmpty &&
+                                      provider.serverTools.every(
+                                        (t) => t.isInstalled,
+                                      ),
                                 ),
-                                _buildCardLayout([
-                                  _buildTextField(
-                                    _repoController,
-                                    'Git Repository',
-                                    'git@github.com:user/repo.git',
-                                  ),
-                                  _buildTextField(
-                                    _branchController,
-                                    'Branch',
-                                    'main',
-                                  ),
-                                  Focus(
-                                    onFocusChange: (hasNext) {
-                                      if (!hasNext) {
-                                        provider.checkDomain(
-                                          _createTempConfig(),
-                                          _domainController.text,
-                                        );
-                                      }
-                                    },
-                                    child: _buildTextField(
-                                      _domainController,
-                                      'Domain',
-                                      'api.example.com',
-                                      verificationState:
-                                          provider.domainVerificationState,
-                                      verificationMessage:
-                                          provider.domainVerificationState == 3
-                                          ? 'Domain config exists'
-                                          : (provider.domainVerificationState ==
-                                                    2
-                                                ? 'Domain available'
-                                                : null),
-                                    ),
-                                  ),
-                                  _buildTextField(
-                                    _portController,
-                                    'App Port',
-                                    '5001',
-                                  ),
-                                  Focus(
-                                    onFocusChange: (hasNext) {
-                                      if (!hasNext) {
-                                        provider.checkApp(
-                                          _createTempConfig(),
-                                          _appNameController.text,
-                                        );
-                                      }
-                                    },
-                                    child: _buildTextField(
-                                      _appNameController,
-                                      'App Name (PM2)',
-                                      'backend',
-                                      verificationState:
-                                          provider.appVerificationState,
-                                      verificationMessage:
-                                          provider.appVerificationState == 3
-                                          ? 'App already running (Update)'
-                                          : (provider.appVerificationState == 2
-                                                ? 'App name available'
-                                                : null),
-                                    ),
-                                  ),
-                                  _buildTextField(
-                                    _pathOnServerController,
-                                    'Server Path',
-                                    '/var/www/backend',
-                                  ),
-                                  _buildTextField(
-                                    _nginxConfController,
-                                    'NGINX Config Path',
-                                    '/etc/nginx/sites-enabled/default',
-                                  ),
-                                ]),
-
-                                _buildSectionHeader(
-                                  'Git Credentials (Optional)',
-                                  Icons.lock_outline,
-                                ),
-                                _buildCardLayout([
-                                  _buildTextField(
-                                    _gitUsernameController,
-                                    'Git Username',
-                                    'Username',
-                                  ),
-                                  _buildTextField(
-                                    _gitTokenController,
-                                    'Git Token',
-                                    'Token',
-                                    isPassword: true,
-                                  ),
-                                ]),
-
-                                _buildSectionHeader(
-                                  'Commands',
-                                  Icons.terminal_outlined,
-                                ),
-                                _buildCardLayout([
-                                  _buildTextField(
-                                    _installCommandController,
-                                    'Install Command',
-                                    'npm install',
-                                  ),
-                                  _buildTextField(
-                                    _startCommandController,
-                                    'Start Command',
-                                    'pm2 start...',
-                                  ),
-                                ]),
-
-                                _buildSectionHeader(
-                                  'SSL Configuration',
-                                  Icons.security,
-                                ),
-                                _buildCardLayout([
-                                  _buildSwitch(
-                                    'Enable SSL (Certbot)',
-                                    provider.enableSSL,
-                                    (val) => provider.setEnableSSL(val),
-                                  ),
-                                  if (provider.enableSSL)
-                                    _buildTextField(
-                                      _sslEmailController,
-                                      'SSL Email',
-                                      'email@example.com',
-                                    ),
-                                ]),
+                                _buildPrerequisitesStep(provider),
 
                                 const SizedBox(height: 32),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 56,
-                                  child: ElevatedButton(
-                                    onPressed: () => _save(provider),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      foregroundColor: Colors.black,
-                                      textStyle: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    child: const Text('Save Configuration'),
-                                  ),
+
+                                // Step 2: Project Setup
+                                _buildStepHeader(
+                                  2,
+                                  'Project Setup',
+                                  'Clone repository and install dependencies',
+                                  false, // We'll need a real status for this later
+                                ),
+                                _buildProjectSetupStep(provider),
+
+                                const SizedBox(height: 32),
+
+                                // Step 3: Deployment Configuration
+                                _buildStepHeader(
+                                  3,
+                                  'Deployment Configuration',
+                                  'Configure ports, domains, and processes',
+                                  false,
+                                ),
+                                _buildDeploymentConfigStep(provider),
+
+                                // Step 4: Domain & SSL
+                                _buildStepHeader(
+                                  4,
+                                  'Domain & SSL',
+                                  'Verify access and secure connection',
+                                  false,
+                                ),
+                                _buildDomainSSLStep(provider),
+                                _buildStepHeader(
+                                  5,
+                                  'Master Deployment',
+                                  'Run full deployment sequence',
+                                  false,
                                 ),
                               ],
+
                               const SizedBox(height: 48),
                             ],
                           ),
@@ -605,6 +323,453 @@ class _EditClientScreenState extends State<EditClientScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildStepHeader(
+    int number,
+    String title,
+    String subtitle,
+    bool isCompleted,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16, top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCompleted
+              ? Colors.green.withValues(alpha: 0.3)
+              : Colors.transparent,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: isCompleted ? Colors.green : Colors.blue,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: isCompleted
+                  ? const Icon(Icons.check, color: Colors.white, size: 20)
+                  : Text(
+                      '$number',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrerequisitesStep(EditClientProvider provider) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (provider.serverTools.isEmpty && !provider.checkingTools)
+              const Text(
+                'Check if the server has the necessary tools installed.',
+                style: TextStyle(color: Colors.grey),
+              ),
+
+            if (provider.serverTools.isNotEmpty)
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: provider.serverTools.length,
+                separatorBuilder: (ctx, i) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final tool = provider.serverTools[i];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: Icon(
+                      tool.isInstalled ? Icons.check_circle : Icons.error,
+                      color: tool.isInstalled ? Colors.green : Colors.red,
+                    ),
+                    title: Text(tool.name.toUpperCase()),
+                    subtitle: Text(
+                      tool.isInstalled
+                          ? 'Version: ${tool.version}'
+                          : 'Not installed',
+                    ),
+                    trailing: tool.isInstalled
+                        ? null
+                        : ElevatedButton(
+                            onPressed: provider.isBusy
+                                ? null
+                                : () => provider.installMissingTools(
+                                    _createTempConfig(),
+                                  ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Install'),
+                          ),
+                  );
+                },
+              ),
+
+            const SizedBox(height: 16),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: provider.isBusy
+                    ? null
+                    : () => provider.checkServerPrerequisites(
+                        _createTempConfig(),
+                      ),
+                icon: provider.checkingTools
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                label: Text(
+                  provider.serverTools.isEmpty
+                      ? 'Check Prerequisites'
+                      : 'Re-check Prerequisites',
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectSetupStep(EditClientProvider provider) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildTextField(
+              _repoController,
+              'Git Repository URL',
+              'https://github.com/user/repo.git',
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    _branchController,
+                    'Branch Name',
+                    'main',
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextField(
+                    _pathOnServerController,
+                    'Destination Path',
+                    '/var/www/my-app',
+                  ),
+                ),
+              ],
+            ),
+            ExpansionTile(
+              title: const Text(
+                'Git Credentials (Optional)',
+                style: TextStyle(fontSize: 14),
+              ),
+              tilePadding: EdgeInsets.zero,
+              collapsedTextColor: Colors.white70,
+              textColor: Colors.white,
+              children: [
+                _buildTextField(
+                  _gitUsernameController,
+                  'Git Username',
+                  'Username',
+                ),
+                _buildTextField(
+                  _gitTokenController,
+                  'Git Token / Password',
+                  'ghp_...',
+                  isPassword: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: provider.isBusy || provider.cloning
+                    ? null
+                    : () {
+                        provider.cloneProject(_createTempConfig());
+                      },
+                icon: provider.cloning
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download),
+                label: Text(
+                  provider.cloning
+                      ? 'Cloning & Installing...'
+                      : 'Clone & Install Dependencies',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.withValues(alpha: 0.2),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeploymentConfigStep(EditClientProvider provider) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildTextField(_appNameController, 'App Name (PM2)', 'my-app'),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(_portController, 'Port', '3000'),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextField(
+                    _domainController,
+                    'Domain',
+                    'example.com',
+                  ),
+                ),
+              ],
+            ),
+            _buildTextField(
+              _installCommandController,
+              'Install Command',
+              'npm install',
+            ),
+            _buildTextField(
+              _startCommandController,
+              'Start Command',
+              'pm2 start...',
+            ),
+
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: provider.isBusy
+                    ? null
+                    : () {
+                        provider.deployApp(_createTempConfig());
+                      },
+                icon: provider.isBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.rocket_launch),
+                label: Text(
+                  provider.isBusy ? 'Deploying...' : 'Deploy Application',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.withValues(alpha: 0.2),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDomainSSLStep(EditClientProvider provider) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This step will configure Nginx as a reverse proxy for your app and optionally secure it with SSL (Let\'s Encrypt).',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            // Re-display key info or allow editing?
+            // Better to just rely on the controllers which are already filled.
+            // Maybe show a summary: "Configuring ${_domainController.text} -> localhost:${_portController.text}"
+            // Domain Input
+            _buildTextField(_domainController, 'Domain Name', 'example.com'),
+            const SizedBox(height: 8),
+            Text(
+              'Points to localhost:${_portController.text}',
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+
+            SwitchListTile(
+              title: const Text('Enable SSL (HTTPS)'),
+              subtitle: const Text('Generate a free certificate using Certbot'),
+              value: provider.enableSSL,
+              onChanged: (val) => provider.setEnableSSL(val),
+              contentPadding: EdgeInsets.zero,
+            ),
+
+            if (provider.enableSSL)
+              _buildTextField(
+                _sslEmailController,
+                'Email for SSL Expiry Notifications',
+                'admin@example.com',
+              ),
+
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: provider.isBusy
+                    ? null
+                    : () {
+                        provider.configureNginxAndSSL(_createTempConfig());
+                      },
+                icon: provider.isBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.security),
+                label: Text(
+                  provider.isBusy ? 'Configuring...' : 'Configure Nginx & SSL',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.withValues(alpha: 0.2),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionSection(EditClientProvider provider) {
+    return Column(
+      children: [
+        _buildSectionHeader('Credentials & Connection', Icons.key_outlined),
+        _buildCardLayout([
+          _buildTextField(
+            _serverAliasController,
+            'SSH Destination',
+            'root@1.2.3.4',
+          ),
+          _buildTextField(
+            _passwordController,
+            'SSH Password',
+            'Leave blank to use keys',
+            isPassword: true,
+          ),
+        ]),
+        // General Info integrated here
+        if (provider.isVerified) ...[
+          const SizedBox(height: 24),
+          _buildSectionHeader('General Information', Icons.info_outline),
+          _buildCardLayout([
+            _buildTextField(
+              _nameController,
+              'Client Name',
+              'My Production Server',
+            ),
+            _buildDeploymentTypeDropdown(provider),
+          ]),
+        ],
+
+        const SizedBox(height: 16),
+        Center(
+          child: ElevatedButton.icon(
+            onPressed: provider.isVerifying
+                ? null
+                : () => provider.testConnection(_createTempConfig()),
+            icon: provider.isVerifying
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    provider.isVerified ? Icons.check_circle : Icons.wifi,
+                    color: provider.isVerified ? Colors.green : Colors.white,
+                  ),
+            label: Text(
+              provider.isVerified ? 'Connected' : 'Test Connection',
+              style: TextStyle(
+                color: provider.isVerified ? Colors.green : Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            ),
+          ),
+        ),
+        if (provider.verificationStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Center(
+              child: Text(
+                provider.verificationStatus!,
+                style: TextStyle(
+                  color: provider.isVerified ? Colors.green : Colors.redAccent,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
