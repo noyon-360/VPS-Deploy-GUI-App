@@ -142,6 +142,49 @@ class VerificationService {
     }
   }
 
+  Future<bool> deletePm2App(
+    ClientConfig config,
+    String appName, {
+    Function(String)? onLog,
+  }) async {
+    try {
+      onLog?.call('> Deleting PM2 app: $appName...');
+      final client = await _connect(config);
+      final session = await client.execute('pm2 delete "$appName" && pm2 save');
+      await session.stdout
+          .listen((event) => onLog?.call(utf8.decode(event)))
+          .asFuture();
+      client.close();
+      return true;
+    } catch (e) {
+      onLog?.call('> Error deleting PM2 app: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteNginxSite(
+    ClientConfig config,
+    String siteName, {
+    Function(String)? onLog,
+  }) async {
+    try {
+      onLog?.call('> Deleting Nginx site: $siteName...');
+      final client = await _connect(config);
+      // Remove from enabled and available
+      final cmd =
+          'sudo rm "/etc/nginx/sites-enabled/$siteName" "/etc/nginx/sites-available/$siteName" && sudo systemctl reload nginx';
+      final session = await client.execute(cmd);
+      await session.stdout
+          .listen((event) => onLog?.call(utf8.decode(event)))
+          .asFuture();
+      client.close();
+      return true;
+    } catch (e) {
+      onLog?.call('> Error deleting Nginx site: $e');
+      return false;
+    }
+  }
+
   Future<SSHClient> _connect(ClientConfig config) async {
     final parts = _parseConnection(config.serverAlias);
     final socket = await SSHSocket.connect(parts['host']!, 22);
