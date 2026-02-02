@@ -24,9 +24,11 @@ class EditClientProvider with ChangeNotifier {
   // Form State
   String _deploymentType = 'backend';
   bool _enableSSL = false;
+  bool _hasUnsavedChanges = false;
 
   String get deploymentType => _deploymentType;
   bool get enableSSL => _enableSSL;
+  bool get hasUnsavedChanges => _hasUnsavedChanges;
 
   // Sidebar visibility and widths
   bool _isSidebarVisible = false;
@@ -404,6 +406,23 @@ server {
 
   void setEnableSSL(bool enable) {
     _enableSSL = enable;
+    notifyListeners();
+  }
+
+  void markAsChanged() {
+    if (!_hasUnsavedChanges) {
+      _hasUnsavedChanges = true;
+      notifyListeners();
+    }
+  }
+
+  void markAsSaved() {
+    _hasUnsavedChanges = false;
+    notifyListeners();
+  }
+
+  void resetChangeTracking() {
+    _hasUnsavedChanges = false;
     notifyListeners();
   }
 

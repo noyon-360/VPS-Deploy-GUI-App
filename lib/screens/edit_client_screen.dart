@@ -2,6 +2,7 @@ import 'package:deploy_gui/models/client_config.dart';
 import 'package:deploy_gui/models/temp_client_config.dart';
 import 'package:deploy_gui/models/repository_config.dart';
 import 'package:deploy_gui/providers/edit_client_provider.dart';
+import 'package:deploy_gui/providers/app_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -43,6 +44,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
   final TextEditingController _shellInputController = TextEditingController();
   final FocusNode _shellInputFocusNode = FocusNode();
 
+  // Store reference to provider for field change callbacks
+  EditClientProvider? _provider;
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +85,30 @@ class _EditClientScreenState extends State<EditClientScreen> {
     );
     _gitTokenController = TextEditingController(text: repo?.gitToken ?? '');
     _sslEmailController = TextEditingController(text: repo?.sslEmail ?? '');
+
+    // Defer listener attachment until after the first frame
+    // This ensures the provider is available in the context
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _nameController.addListener(_onFieldChanged);
+      _serverAliasController.addListener(_onFieldChanged);
+      _repoController.addListener(_onFieldChanged);
+      _branchController.addListener(_onFieldChanged);
+      _domainController.addListener(_onFieldChanged);
+      _portController.addListener(_onFieldChanged);
+      _appNameController.addListener(_onFieldChanged);
+      _pathOnServerController.addListener(_onFieldChanged);
+      _nginxConfController.addListener(_onFieldChanged);
+      _installCommandController.addListener(_onFieldChanged);
+      _startCommandController.addListener(_onFieldChanged);
+      _passwordController.addListener(_onFieldChanged);
+      _gitUsernameController.addListener(_onFieldChanged);
+      _gitTokenController.addListener(_onFieldChanged);
+      _sslEmailController.addListener(_onFieldChanged);
+    });
+  }
+
+  void _onFieldChanged() {
+    _provider?.markAsChanged();
   }
 
   @override
@@ -203,6 +231,151 @@ class _EditClientScreenState extends State<EditClientScreen> {
     );
   }
 
+  Future<void> _showSaveDialog(EditClientProvider provider) async {
+    final TextEditingController nameController = TextEditingController(
+      text: _nameController.text.isEmpty ? '' : _nameController.text,
+    );
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save Configuration'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Please provide a name for this client configuration:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Client Name',
+                hintText: 'e.g., Production Server',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (value) {
+                if (value.trim().isNotEmpty) {
+                  Navigator.pop(ctx, true);
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Client name cannot be empty'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && nameController.text.trim().isNotEmpty) {
+      await _saveClient(nameController.text.trim(), provider);
+    }
+
+    nameController.dispose();
+  }
+
+  Future<void> _saveClient(
+    String clientName,
+    EditClientProvider provider,
+  ) async {
+    try {
+      // Update the name controller with the provided name
+      _nameController.text = clientName;
+
+      // Create repository config from form data
+      final repo = RepositoryConfig(
+        repoUrl: _repoController.text,
+        branch: _branchController.text,
+        appName: _appNameController.text,
+        pathOnServer: _pathOnServerController.text,
+        nginxConf: _nginxConfController.text,
+        domain: _domainController.text,
+        port: _portController.text,
+        installCommand: _installCommandController.text,
+        startCommand: _startCommandController.text,
+        gitUsername: _gitUsernameController.text.isEmpty
+            ? null
+            : _gitUsernameController.text,
+        gitToken: _gitTokenController.text.isEmpty
+            ? null
+            : _gitTokenController.text,
+        enableSSL: provider.enableSSL,
+        sslEmail: _sslEmailController.text.isEmpty
+            ? null
+            : _sslEmailController.text,
+      );
+
+      // Create ClientConfig
+      final clientConfig = ClientConfig(
+        id:
+            widget.client?.id ??
+            DateTime.now().millisecondsSinceEpoch.toString(),
+        name: clientName,
+        serverAlias: _serverAliasController.text,
+        password: _passwordController.text.isEmpty
+            ? null
+            : _passwordController.text,
+        repositories: [repo],
+      );
+
+      // Get AppProvider and save
+      final appProvider = Provider.of<AppProvider>(context, listen: false);
+
+      if (widget.client != null) {
+        // Update existing client
+        await appProvider.updateClient(clientConfig);
+      } else {
+        // Add new client
+        await appProvider.addClient(clientConfig);
+      }
+
+      // Mark as saved
+      provider.markAsSaved();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Configuration saved successfully: $clientName'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save configuration: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = widget.client?.repositories.isNotEmpty == true
@@ -215,6 +388,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
         ..setEnableSSL(repo?.enableSSL ?? false),
       child: Consumer<EditClientProvider>(
         builder: (context, provider, child) {
+          // Store provider reference for field change callbacks
+          _provider = provider;
+
           // Unfocus shell input if it becomes invisible to prevent PlatformException
           if (!provider.isCenterTerminalVisible &&
               _shellInputFocusNode.hasFocus) {
@@ -227,6 +403,36 @@ class _EditClientScreenState extends State<EditClientScreen> {
               ),
               elevation: 0,
               backgroundColor: Colors.transparent,
+              actions: [
+                // Save button with indicator
+                Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.save),
+                      onPressed: () => _showSaveDialog(provider),
+                      tooltip: 'Save Configuration',
+                    ),
+                    if (provider.hasUnsavedChanges)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(context).scaffoldBackgroundColor,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
             body: Row(
               children: [
@@ -780,7 +986,10 @@ class _EditClientScreenState extends State<EditClientScreen> {
               title: const Text('Enable SSL (HTTPS)'),
               subtitle: const Text('Generate a free certificate using Certbot'),
               value: provider.enableSSL,
-              onChanged: (val) => provider.setEnableSSL(val),
+              onChanged: (val) {
+                provider.setEnableSSL(val);
+                provider.markAsChanged();
+              },
               contentPadding: EdgeInsets.zero,
             ),
 
