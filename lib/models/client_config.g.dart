@@ -9,6 +9,7 @@ part of 'client_config.dart';
 ClientConfig _$ClientConfigFromJson(Map<String, dynamic> json) => ClientConfig(
   id: json['id'] as String,
   name: json['name'] as String,
+  type: json['type'] as String? ?? 'backend',
   serverAlias: json['serverAlias'] as String,
   repo: json['repo'] as String,
   branch: json['branch'] as String? ?? 'main',
@@ -24,12 +25,15 @@ ClientConfig _$ClientConfigFromJson(Map<String, dynamic> json) => ClientConfig(
   password: json['password'] as String?,
   gitUsername: json['gitUsername'] as String?,
   gitToken: json['gitToken'] as String?,
+  enableSSL: json['enableSSL'] as bool? ?? false,
+  sslEmail: json['sslEmail'] as String?,
 );
 
 Map<String, dynamic> _$ClientConfigToJson(ClientConfig instance) =>
     <String, dynamic>{
       'id': instance.id,
       'name': instance.name,
+      'type': instance.type,
       'serverAlias': instance.serverAlias,
       'repo': instance.repo,
       'branch': instance.branch,
@@ -43,4 +47,6 @@ Map<String, dynamic> _$ClientConfigToJson(ClientConfig instance) =>
       'password': instance.password,
       'gitUsername': instance.gitUsername,
       'gitToken': instance.gitToken,
+      'enableSSL': instance.enableSSL,
+      'sslEmail': instance.sslEmail,
     };

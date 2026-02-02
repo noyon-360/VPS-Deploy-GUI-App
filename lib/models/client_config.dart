@@ -6,6 +6,7 @@ part 'client_config.g.dart';
 class ClientConfig {
   final String id;
   final String name;
+  final String type; // 'backend' or 'website'
   final String serverAlias;
   final String repo;
   final String branch;
@@ -19,24 +20,28 @@ class ClientConfig {
   final String? password;
   final String? gitUsername;
   final String? gitToken;
+  final bool enableSSL;
+  final String? sslEmail;
 
   ClientConfig({
     required this.id,
     required this.name,
-    required this.serverAlias,
+    this.type = 'backend',
+    this.serverAlias = '',
     required this.repo,
     this.branch = 'main',
     required this.domain,
-    this.port = '5001',
+    this.port = '3000',
     required this.appName,
     required this.pathOnServer,
     required this.nginxConf,
     this.installCommand = 'npm install',
-    this.startCommand =
-        'pm2 start server.js --name "{APP_NAME}" -- --port {PORT}',
+    this.startCommand = 'pm2 start server.js',
     this.password,
     this.gitUsername,
     this.gitToken,
+    this.enableSSL = false,
+    this.sslEmail,
   });
 
   factory ClientConfig.fromJson(Map<String, dynamic> json) =>
@@ -46,6 +51,7 @@ class ClientConfig {
   ClientConfig copyWith({
     String? id,
     String? name,
+    String? type,
     String? serverAlias,
     String? repo,
     String? branch,
@@ -59,10 +65,13 @@ class ClientConfig {
     String? password,
     String? gitUsername,
     String? gitToken,
+    bool? enableSSL,
+    String? sslEmail,
   }) {
     return ClientConfig(
       id: id ?? this.id,
       name: name ?? this.name,
+      type: type ?? this.type,
       serverAlias: serverAlias ?? this.serverAlias,
       repo: repo ?? this.repo,
       branch: branch ?? this.branch,
@@ -76,6 +85,8 @@ class ClientConfig {
       password: password ?? this.password,
       gitUsername: gitUsername ?? this.gitUsername,
       gitToken: gitToken ?? this.gitToken,
+      enableSSL: enableSSL ?? this.enableSSL,
+      sslEmail: sslEmail ?? this.sslEmail,
     );
   }
 }

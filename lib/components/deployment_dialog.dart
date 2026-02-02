@@ -85,7 +85,7 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
     final theme = Theme.of(context);
 
     return AlertDialog(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: const Color(0xFF1E1E1E), // Match terminal background
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: Row(
         children: [
@@ -97,37 +97,46 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
           Expanded(
             child: Text(
               'Deploying: ${widget.client.name}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
       ),
       content: SizedBox(
-        width: 700,
-        height: 450,
+        width: 800,
+        height: 500,
         child: Column(
           children: [
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(150),
+                  color: Colors.black.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withAlpha(10)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
                 child: ListView.builder(
                   controller: _scrollController,
                   itemCount: _logs.length,
                   itemBuilder: (context, index) {
+                    final log = _logs[index];
+                    final isError =
+                        log.contains('Error') || log.contains('ERR:');
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text(
-                        _logs[index],
+                      child: SelectableText(
+                        log,
                         style: TextStyle(
-                          color: _logs[index].contains('Error')
+                          color: isError
                               ? Colors.redAccent
-                              : Colors.lightGreenAccent.shade100,
-                          fontFamily: 'monospace',
+                              : Colors.lightGreenAccent.withValues(alpha: 0.8),
+                          fontFamily: 'Consolas',
                           fontSize: 13,
                         ),
                       ),
@@ -141,8 +150,11 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
                 margin: const EdgeInsets.only(top: 12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withAlpha(30),
+                  color: Colors.redAccent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.redAccent.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -153,7 +165,7 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
+                      child: SelectableText(
                         _error!,
                         style: const TextStyle(
                           color: Colors.redAccent,
@@ -170,7 +182,7 @@ class _DeploymentDialogState extends State<DeploymentDialog> {
                 child: Column(
                   children: [
                     LinearProgressIndicator(
-                      backgroundColor: Colors.white.withAlpha(10),
+                      backgroundColor: Colors.white.withValues(alpha: 0.1),
                       color: theme.colorScheme.primary,
                       minHeight: 6,
                       borderRadius: BorderRadius.circular(3),
