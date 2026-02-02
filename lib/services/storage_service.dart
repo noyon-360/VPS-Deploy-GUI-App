@@ -1,4 +1,6 @@
 import 'package:deploy_gui/models/client_config.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
@@ -8,6 +10,9 @@ class StorageService {
   static const String _fileName = 'client_configs.json';
 
   Future<String> get _localPath async {
+    if (kIsWeb) {
+      return ''; // Path not used for web storage usually
+    }
     final directory = await getApplicationDocumentsDirectory();
     final deployDir = Directory(p.join(directory.path, 'DeployGUI'));
     if (!await deployDir.exists()) {
@@ -31,7 +36,7 @@ class StorageService {
       final List<dynamic> jsonList = json.decode(contents);
       return jsonList.map((json) => ClientConfig.fromJson(json)).toList();
     } catch (e) {
-      print('Error loading configs: $e');
+      debugPrint('Error loading configs: $e');
       return [];
     }
   }
@@ -42,7 +47,7 @@ class StorageService {
       final jsonList = configs.map((config) => config.toJson()).toList();
       await file.writeAsString(json.encode(jsonList));
     } catch (e) {
-      print('Error saving configs: $e');
+      debugPrint('Error saving configs: $e');
     }
   }
 }

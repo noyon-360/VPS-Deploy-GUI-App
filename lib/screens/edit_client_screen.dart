@@ -1,9 +1,7 @@
 import 'package:deploy_gui/models/client_config.dart';
-import 'package:deploy_gui/providers/app_provider.dart';
 import 'package:deploy_gui/providers/edit_client_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uuid/uuid.dart';
 
 class EditClientScreen extends StatefulWidget {
   final ClientConfig? client;
@@ -32,6 +30,16 @@ class _EditClientScreenState extends State<EditClientScreen> {
   late TextEditingController _gitUsernameController;
   late TextEditingController _gitTokenController;
   late TextEditingController _sslEmailController;
+
+  bool _isLeftHovered = false;
+  bool _isRightHovered = false;
+  bool _isLeftDragging = false;
+  bool _isRightDragging = false;
+  bool _isCenterHovered = false;
+  bool _isCenterDragging = false;
+
+  final TextEditingController _shellInputController = TextEditingController();
+  final FocusNode _shellInputFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -81,49 +89,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
     _gitUsernameController.dispose();
     _gitTokenController.dispose();
     _sslEmailController.dispose();
+    _shellInputController.dispose();
+    _shellInputFocusNode.dispose();
     super.dispose();
-  }
-
-  void _save(EditClientProvider provider) async {
-    if (_formKey.currentState!.validate()) {
-      final config = ClientConfig(
-        id: widget.client?.id ?? const Uuid().v4(),
-        name: _nameController.text,
-        serverAlias: _serverAliasController.text,
-        repo: _repoController.text,
-        branch: _branchController.text,
-        domain: _domainController.text,
-        port: _portController.text,
-        appName: _appNameController.text,
-        pathOnServer: _pathOnServerController.text,
-        nginxConf: _nginxConfController.text,
-        installCommand: _installCommandController.text,
-        startCommand: _startCommandController.text,
-        password: _passwordController.text.isEmpty
-            ? null
-            : _passwordController.text,
-        gitUsername: _gitUsernameController.text.isEmpty
-            ? null
-            : _gitUsernameController.text,
-        gitToken: _gitTokenController.text.isEmpty
-            ? null
-            : _gitTokenController.text,
-        type: provider.deploymentType,
-        enableSSL: provider.enableSSL,
-        sslEmail: provider.enableSSL && _sslEmailController.text.isNotEmpty
-            ? _sslEmailController.text
-            : null,
-      );
-
-      if (widget.client == null) {
-        await context.read<AppProvider>().addClient(config);
-      } else {
-        await context.read<AppProvider>().updateClient(config);
-      }
-      if (mounted) {
-        Navigator.pop(context);
-      }
-    }
   }
 
   // Methods moved to EditClientProvider
@@ -224,6 +192,11 @@ class _EditClientScreenState extends State<EditClientScreen> {
         ..setEnableSSL(widget.client?.enableSSL ?? false),
       child: Consumer<EditClientProvider>(
         builder: (context, provider, child) {
+          // Unfocus shell input if it becomes invisible to prevent PlatformException
+          if (!provider.isCenterTerminalVisible &&
+              _shellInputFocusNode.hasFocus) {
+            _shellInputFocusNode.unfocus();
+          }
           return Scaffold(
             appBar: AppBar(
               title: Text(
@@ -237,83 +210,212 @@ class _EditClientScreenState extends State<EditClientScreen> {
                 _buildExplorerSidebar(provider),
                 _buildResizeHandle(provider, isLeft: true),
                 Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 40.0,
-                          vertical: 24.0,
-                        ),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              _buildConnectionSection(provider),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 40.0,
+                              vertical: 24.0,
+                            ),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  _buildConnectionSection(provider),
 
-                              if (provider.isVerified) ...[
-                                const Divider(
-                                  height: 48,
-                                  thickness: 1,
-                                  color: Colors.white10,
-                                ),
+                                  if (provider.isVerified) ...[
+                                    const Divider(
+                                      height: 48,
+                                      thickness: 1,
+                                      color: Colors.white10,
+                                    ),
 
-                                // Step 1: Prerequisites
-                                _buildStepHeader(
-                                  1,
-                                  'Prerequisites Check',
-                                  'Verify server tools (Nginx, Git, Node, PM2)',
-                                  provider.serverTools.isNotEmpty &&
-                                      provider.serverTools.every(
-                                        (t) => t.isInstalled,
-                                      ),
-                                ),
-                                _buildPrerequisitesStep(provider),
+                                    // Step 1: Prerequisites
+                                    _buildStepHeader(
+                                      1,
+                                      'Prerequisites Check',
+                                      'Verify server tools (Nginx, Git, Node, PM2)',
+                                      provider.serverTools.isNotEmpty &&
+                                          provider.serverTools.every(
+                                            (t) => t.isInstalled,
+                                          ),
+                                    ),
+                                    _buildPrerequisitesStep(provider),
 
-                                const SizedBox(height: 32),
+                                    const SizedBox(height: 32),
 
-                                // Step 2: Project Setup
-                                _buildStepHeader(
-                                  2,
-                                  'Project Setup',
-                                  'Clone repository and install dependencies',
-                                  false, // We'll need a real status for this later
-                                ),
-                                _buildProjectSetupStep(provider),
+                                    // Step 2: Project Setup
+                                    _buildStepHeader(
+                                      2,
+                                      'Project Setup',
+                                      'Clone repository and install dependencies',
+                                      false, // We'll need a real status for this later
+                                    ),
+                                    _buildProjectSetupStep(provider),
 
-                                const SizedBox(height: 32),
+                                    const SizedBox(height: 32),
 
-                                // Step 3: Deployment Configuration
-                                _buildStepHeader(
-                                  3,
-                                  'Deployment Configuration',
-                                  'Configure ports, domains, and processes',
-                                  false,
-                                ),
-                                _buildDeploymentConfigStep(provider),
+                                    // Step 3: Deployment Configuration
+                                    _buildStepHeader(
+                                      3,
+                                      'Deployment Configuration',
+                                      'Configure ports, domains, and processes',
+                                      false,
+                                    ),
+                                    _buildDeploymentConfigStep(provider),
 
-                                // Step 4: Domain & SSL
-                                _buildStepHeader(
-                                  4,
-                                  'Domain & SSL',
-                                  'Verify access and secure connection',
-                                  false,
-                                ),
-                                _buildDomainSSLStep(provider),
-                                _buildStepHeader(
-                                  5,
-                                  'Master Deployment',
-                                  'Run full deployment sequence',
-                                  false,
-                                ),
-                              ],
+                                    // Step 4: Domain & SSL
+                                    _buildStepHeader(
+                                      4,
+                                      'Domain & SSL',
+                                      'Verify access and secure connection',
+                                      false,
+                                    ),
+                                    _buildDomainSSLStep(provider),
+                                    _buildStepHeader(
+                                      5,
+                                      'Master Deployment',
+                                      'Run full deployment sequence',
+                                      false,
+                                    ),
+                                  ],
 
-                              const SizedBox(height: 48),
-                            ],
+                                  const SizedBox(height: 48),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      if (provider.isCenterTerminalVisible) ...[
+                        _buildVerticalResizeHandle(provider),
+                        Container(
+                          height: provider.centerTerminalHeight,
+                          color: const Color(0xFF1E1E1E),
+                          child: Column(
+                            children: [
+                              // Log Header / Toolbar
+                              Container(
+                                height: 32,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                color: Colors.black26,
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.terminal,
+                                      size: 14,
+                                      color: Colors.greenAccent,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'INTERACTIVE SHELL',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    IconButton(
+                                      icon: const Icon(Icons.close, size: 14),
+                                      onPressed: () =>
+                                          provider.disconnectTerminal(),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      color: Colors.white30,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Log Content
+                              Expanded(
+                                child: SelectionArea(
+                                  child: ListView.builder(
+                                    controller: provider.shellScrollController,
+                                    padding: const EdgeInsets.all(8),
+                                    itemCount: provider.shellLogs.length,
+                                    itemBuilder: (context, index) {
+                                      final log = provider.shellLogs[index];
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 2,
+                                        ),
+                                        child: Text(
+                                          log.message,
+                                          style: TextStyle(
+                                            color: log.color,
+                                            fontSize: 12,
+                                            fontFamily: 'Consolas',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                              // Command Input
+                              Container(
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    top: BorderSide(color: Colors.white10),
+                                  ),
+                                  color: Colors.black12,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      '\$ ',
+                                      style: TextStyle(
+                                        color: Colors.greenAccent,
+                                        fontFamily: 'Consolas',
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _shellInputController,
+                                        focusNode: _shellInputFocusNode,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontFamily: 'Consolas',
+                                          fontSize: 13,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          isDense: true,
+                                          border: InputBorder.none,
+                                          hintText: 'Type command...',
+                                          hintStyle: TextStyle(
+                                            color: Colors.white10,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        onSubmitted: (value) {
+                                          if (value.trim().isNotEmpty) {
+                                            provider.sendShellInput(value);
+                                            _shellInputController.clear();
+                                            _shellInputFocusNode.requestFocus();
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 _buildResizeHandle(provider, isLeft: false),
@@ -756,6 +858,29 @@ class _EditClientScreenState extends State<EditClientScreen> {
             ),
           ),
         ),
+        if (provider.isVerified) ...[
+          const SizedBox(height: 12),
+          Center(
+            child: TextButton.icon(
+              onPressed: () => provider.connectSSHShell(_createTempConfig()),
+              icon: const Icon(
+                Icons.terminal,
+                size: 18,
+                color: Colors.blueAccent,
+              ),
+              label: Text(
+                'Open Interactive Terminal',
+                style: const TextStyle(color: Colors.blueAccent),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ),
+        ],
         if (provider.verificationStatus != null)
           Padding(
             padding: const EdgeInsets.only(top: 8.0),
@@ -773,6 +898,39 @@ class _EditClientScreenState extends State<EditClientScreen> {
     );
   }
 
+  Widget _buildVerticalResizeHandle(EditClientProvider provider) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeUpDown,
+      onEnter: (_) => setState(() => _isCenterHovered = true),
+      onExit: (_) => setState(() => _isCenterHovered = false),
+      child: GestureDetector(
+        onVerticalDragStart: (_) => setState(() => _isCenterDragging = true),
+        onVerticalDragEnd: (_) => setState(() => _isCenterDragging = false),
+        onVerticalDragUpdate: (details) {
+          final maxHeight = MediaQuery.of(context).size.height;
+          provider.updateCenterTerminalHeight(details.delta.dy, maxHeight);
+        },
+        child: Container(
+          height: 12,
+          width: double.infinity,
+          color: Colors.transparent,
+          alignment: Alignment.center,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: (_isCenterHovered || _isCenterDragging) ? 4 : 2,
+            width: (_isCenterHovered || _isCenterDragging) ? 60 : 40,
+            decoration: BoxDecoration(
+              color: (_isCenterHovered || _isCenterDragging)
+                  ? Colors.blue.withValues(alpha: 0.8)
+                  : Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildResizeHandle(
     EditClientProvider provider, {
     required bool isLeft,
@@ -782,9 +940,41 @@ class _EditClientScreenState extends State<EditClientScreen> {
         : provider.isTerminalVisible;
     if (!isVisible) return const SizedBox();
 
+    final isHovered = isLeft ? _isLeftHovered : _isRightHovered;
+    final isDragging = isLeft ? _isLeftDragging : _isRightDragging;
+
     return MouseRegion(
+      onEnter: (_) => setState(() {
+        if (isLeft) {
+          _isLeftHovered = true;
+        } else {
+          _isRightHovered = true;
+        }
+      }),
+      onExit: (_) => setState(() {
+        if (isLeft) {
+          _isLeftHovered = false;
+        } else {
+          _isRightHovered = false;
+        }
+      }),
       cursor: SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragStart: (_) => setState(() {
+          if (isLeft) {
+            _isLeftDragging = true;
+          } else {
+            _isRightDragging = true;
+          }
+        }),
+        onHorizontalDragEnd: (_) => setState(() {
+          if (isLeft) {
+            _isLeftDragging = false;
+          } else {
+            _isRightDragging = false;
+          }
+        }),
         onHorizontalDragUpdate: (details) {
           final maxWidth = MediaQuery.of(context).size.width;
           if (isLeft) {
@@ -794,13 +984,21 @@ class _EditClientScreenState extends State<EditClientScreen> {
           }
         },
         child: Container(
-          width: 8,
+          width: 24, // Increased hit area
           color: Colors.transparent,
           child: Center(
-            child: Container(
-              width: 1,
-              height: double.infinity,
-              color: Colors.white.withValues(alpha: 0.05),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: (isHovered || isDragging) ? 4 : 2,
+              height: (isHovered || isDragging)
+                  ? MediaQuery.of(context).size.height
+                  : 60,
+              decoration: BoxDecoration(
+                color: (isHovered || isDragging)
+                    ? Colors.blue.withValues(alpha: 0.8)
+                    : Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
         ),
@@ -860,7 +1058,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: DropdownButtonFormField<String>(
-        value: provider.deploymentType,
+        initialValue: provider.deploymentType,
         decoration: InputDecoration(
           labelText: 'Deployment Type',
           filled: true,
@@ -1014,62 +1212,81 @@ class _EditClientScreenState extends State<EditClientScreen> {
       ),
       child: Column(
         children: [
-          // Header Toggle
+          // Adaptive Header
           InkWell(
             onTap: () => provider.toggleSidebar(),
             child: Container(
-              height: 48,
+              height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              color: Colors.black,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const NeverScrollableScrollPhysics(),
-                child: SizedBox(
-                  width: provider.isSidebarVisible
-                      ? (provider.explorerWidth - 16)
-                      : 20,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (provider.isSidebarVisible) ...[
-                        const Icon(
-                          Icons.explore,
-                          size: 16,
-                          color: Colors.blueAccent,
-                        ),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'VPS EXPLORER',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              letterSpacing: 1.2,
+              color: Colors.black26,
+              child: provider.isSidebarVisible
+                  ? ClipRect(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: SizedBox(
+                          width: provider.explorerWidth,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.expand_more,
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  size: 16,
+                                ),
+                                if (provider.explorerWidth > 150) ...[
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.explore,
+                                    size: 14,
+                                    color: Colors.blueAccent,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      'EXPLORER',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (provider.explorerWidth > 200)
+                                    IconButton(
+                                      icon: const Icon(Icons.refresh, size: 14),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      onPressed: () =>
+                                          provider.refreshServerState(
+                                            _createTempConfig(),
+                                          ),
+                                      tooltip: 'Refresh',
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                    ),
+                                ],
+                              ],
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.refresh, size: 16),
-                          onPressed: () =>
-                              provider.refreshServerState(_createTempConfig()),
-                          tooltip: 'Refresh',
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                        ),
-                      ],
-                      Icon(
-                        provider.isSidebarVisible
-                            ? Icons.chevron_left
-                            : Icons.chevron_right,
+                      ),
+                    )
+                  : Center(
+                      child: Icon(
+                        Icons.chevron_right,
                         color: Colors.white.withValues(alpha: 0.5),
                         size: 16,
                       ),
-                    ],
-                  ),
-                ),
-              ),
+                    ),
             ),
           ),
 
@@ -1210,86 +1427,70 @@ class _EditClientScreenState extends State<EditClientScreen> {
             ),
           )
         else
-          ...items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: InkWell(
-                onTap: () => onSelect(item),
-                borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
+          ...items
+              .map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: InkWell(
+                    onTap: () => onSelect(item),
                     borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.split(' (').first,
-                              style: const TextStyle(
-                                color: Color(0xFFCCCCCC),
-                                fontSize: 12,
-                                fontFamily: 'Consolas',
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            if (item.contains(' ('))
-                              Text(
-                                item
-                                    .substring(item.indexOf(' (') + 1)
-                                    .replaceAll(')', ''),
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.4),
-                                  fontSize: 10,
-                                  fontFamily: 'Consolas',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.split(' (').first,
+                                  style: const TextStyle(
+                                    color: Color(0xFFCCCCCC),
+                                    fontSize: 12,
+                                    fontFamily: 'Consolas',
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                          ],
-                        ),
+                                if (item.contains(' ('))
+                                  Text(
+                                    item
+                                        .substring(item.indexOf(' (') + 1)
+                                        .replaceAll(')', ''),
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      fontSize: 10,
+                                      fontFamily: 'Consolas',
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 14),
+                            color: Colors.white.withValues(alpha: 0.3),
+                            hoverColor: Colors.redAccent,
+                            onPressed: () => onDelete(item),
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.all(4),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 14),
-                        color: Colors.white.withValues(alpha: 0.3),
-                        hoverColor: Colors.redAccent,
-                        onPressed: () => onDelete(item),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.all(4),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
+              )
+              .toList(),
       ],
-    );
-  }
-
-  Widget _buildSwitch(String label, bool value, Function(bool) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 14)),
-            Switch(value: value, onChanged: onChanged),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1306,66 +1507,93 @@ class _EditClientScreenState extends State<EditClientScreen> {
         child: Column(
           children: [
             // Explorer Header
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.folder_open,
-                    color: Colors.white.withValues(alpha: 0.5),
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'FILES',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+            Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+              ),
+              child: ClipRect(
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_open,
+                      color: Colors.white.withValues(alpha: 0.5),
+                      size: 14,
+                    ),
+                    if (provider.explorerWidth > 140) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'FILES',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh, size: 14),
-                    color: Colors.white.withValues(alpha: 0.5),
-                    onPressed: () => provider.fetchFiles(
-                      _createTempConfig(),
-                      provider.currentPath,
-                    ),
-                    splashRadius: 16,
-                  ),
-                ],
+                    ],
+                    if (provider.explorerWidth > 180)
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 12),
+                        color: Colors.white.withValues(alpha: 0.4),
+                        onPressed: () => provider.fetchFiles(
+                          _createTempConfig(),
+                          provider.currentPath,
+                        ),
+                        splashRadius: 16,
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                  ],
+                ),
               ),
             ),
             // Current Path
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
-                children: [
-                  InkWell(
-                    onTap: () => provider.navigateUp(_createTempConfig()),
-                    child: Icon(
-                      Icons.arrow_upward,
-                      size: 14,
-                      color: Colors.white.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      provider.currentPath,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        fontSize: 10,
-                        fontFamily: 'Consolas',
+            if (provider.explorerWidth > 120)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: ClipRect(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: SizedBox(
+                      width: provider.explorerWidth - 24,
+                      child: Row(
+                        children: [
+                          InkWell(
+                            onTap: () =>
+                                provider.navigateUp(_createTempConfig()),
+                            child: Icon(
+                              Icons.arrow_upward,
+                              size: 14,
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              provider.currentPath,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                fontSize: 10,
+                                fontFamily: 'Consolas',
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
             if (provider.isLoadingFiles)
               const LinearProgressIndicator(
                 minHeight: 2,
@@ -1418,10 +1646,14 @@ class _EditClientScreenState extends State<EditClientScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Text(
-                            file.size,
-                            style: TextStyle(color: Colors.white, fontSize: 10),
-                          ),
+                          if (provider.explorerWidth > 180)
+                            Text(
+                              file.size,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                fontSize: 10,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -1470,69 +1702,91 @@ class LogConsolePanel extends StatelessWidget {
               valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
             ),
 
-          // Header
+          // Adaptive Header
           InkWell(
             onTap: () => provider.toggleTerminal(),
             child: Container(
-              height: 48,
+              height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              color: Colors.black,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const NeverScrollableScrollPhysics(),
-                child: SizedBox(
-                  width: provider.isTerminalVisible
-                      ? (provider.terminalWidth - 16)
-                      : 20,
-                  child: Row(
-                    children: [
-                      Icon(
-                        provider.isTerminalVisible
-                            ? Icons.chevron_right
-                            : Icons.chevron_left,
+              color: Colors.black26,
+              child: provider.isTerminalVisible
+                  ? ClipRect(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: SizedBox(
+                          width: provider.terminalWidth,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.expand_more,
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  size: 16,
+                                ),
+                                if (provider.terminalWidth > 150) ...[
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.terminal,
+                                    size: 14,
+                                    color: Colors.greenAccent,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      'CONSOLE',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                                if (provider.terminalWidth > 220) ...[
+                                  IconButton(
+                                    icon: const Icon(Icons.copy_all, size: 14),
+                                    color: Colors.white.withValues(alpha: 0.4),
+                                    onPressed: () =>
+                                        provider.copyLogsToClipboard(),
+                                    tooltip: 'Copy',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_sweep,
+                                      size: 14,
+                                    ),
+                                    color: Colors.white.withValues(alpha: 0.4),
+                                    onPressed: () => provider.clearLogs(),
+                                    tooltip: 'Clear',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Icon(
+                        Icons.chevron_left,
                         color: Colors.white.withValues(alpha: 0.5),
                         size: 16,
                       ),
-                      if (provider.isTerminalVisible) ...[
-                        const SizedBox(width: 8),
-                        const Icon(
-                          Icons.terminal,
-                          size: 16,
-                          color: Colors.greenAccent,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Console Logs',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy_all, size: 16),
-                          color: Colors.white.withValues(alpha: 0.5),
-                          onPressed: () => provider.copyLogsToClipboard(),
-                          tooltip: 'Copy Logs',
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.clear_all, size: 16),
-                          color: Colors.white.withValues(alpha: 0.5),
-                          onPressed: () => provider.clearLogs(),
-                          tooltip: 'Clear Logs',
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+                    ),
             ),
           ),
 

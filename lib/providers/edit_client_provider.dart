@@ -7,6 +7,7 @@ import 'package:deploy_gui/models/remote_file.dart';
 import 'package:deploy_gui/models/server_tool_status.dart';
 import 'dart:convert'; // For utf8
 import 'package:dartssh2/dartssh2.dart'; // For SSHClient
+import 'dart:async';
 
 class EditClientProvider with ChangeNotifier {
   final VerificationService _verifier = VerificationService();
@@ -33,10 +34,15 @@ class EditClientProvider with ChangeNotifier {
   double _explorerWidth = 300;
   double _terminalWidth = 400;
 
+  double _centerTerminalHeight = 250;
+  bool _isCenterTerminalVisible = false;
+
   bool get isSidebarVisible => _isSidebarVisible;
   bool get isTerminalVisible => _isTerminalVisible;
+  bool get isCenterTerminalVisible => _isCenterTerminalVisible;
   double get explorerWidth => _explorerWidth;
   double get terminalWidth => _terminalWidth;
+  double get centerTerminalHeight => _centerTerminalHeight;
 
   // Connection & Verification States
   bool _isVerified = false;
@@ -64,16 +70,17 @@ class EditClientProvider with ChangeNotifier {
   String get currentPath => _currentPath;
   bool get isLoadingFiles => _isLoadingFiles;
 
-  // Terminal (xterm)
-  // Terminal Session Management
-  bool _isTerminalConnected = false;
-
-  bool get isTerminalConnected => _isTerminalConnected;
-
   // Legacy logs for verification operations
   final List<LogEntry> _logs = [];
   List<LogEntry> get logs => List.unmodifiable(_logs);
   final ScrollController logScrollController = ScrollController();
+
+  // Shell Logs for Interactive Console
+  final List<LogEntry> _shellLogs = [];
+  List<LogEntry> get shellLogs => List.unmodifiable(_shellLogs);
+  final ScrollController shellScrollController = ScrollController();
+  SSHSession? _shellSession;
+  final FocusNode terminalFocusNode = FocusNode();
 
   // Step 1: Prerequisites
   List<ServerToolStatus> _serverTools = [];
@@ -237,11 +244,15 @@ class EditClientProvider with ChangeNotifier {
       addLog('--- Starting Application Deployment ---', type: LogType.info);
 
       // Validate inputs
-      if (config.appName.isEmpty) throw Exception('App name is required');
-      if (config.startCommand.isEmpty)
+      if (config.appName.isEmpty) {
+        throw Exception('App name is required');
+      }
+      if (config.startCommand.isEmpty) {
         throw Exception('Start command is required');
-      if (config.pathOnServer.isEmpty)
+      }
+      if (config.pathOnServer.isEmpty) {
         throw Exception('Project path is required');
+      }
 
       final client = await _verifier.connect(config);
 
@@ -411,25 +422,166 @@ server {
     notifyListeners();
   }
 
+  void toggleCenterTerminal() {
+    _isCenterTerminalVisible = !_isCenterTerminalVisible;
+    notifyListeners();
+  }
+
+  void updateCenterTerminalHeight(double delta, double maxHeight) {
+    if (!_isCenterTerminalVisible) return;
+    _centerTerminalHeight -= delta;
+    const double minH = 100;
+    final double maxPossibleH = maxHeight * 0.8;
+
+    if (_centerTerminalHeight < minH) {
+      _centerTerminalHeight = minH;
+    }
+    if (_centerTerminalHeight > maxPossibleH) {
+      _centerTerminalHeight = maxPossibleH;
+    }
+    notifyListeners();
+  }
+
+  Future<void> connectSSHShell(ClientConfig config) async {
+    if (_shellSession != null) {
+      _shellSession!.close();
+      _shellSession = null;
+    }
+
+    try {
+      addLog('--- Opening Interactive Shell ---', type: LogType.info);
+      _shellLogs.clear();
+      _shellLogs.add(
+        LogEntry(
+          message: 'SSH Session Started. You can type commands below.',
+          type: LogType.info,
+        ),
+      );
+      _isCenterTerminalVisible = true;
+      notifyListeners();
+
+      final client = await _verifier.connect(config);
+      _shellSession = await client.shell(
+        pty: const SSHPtyConfig(width: 80, height: 24),
+      );
+
+      // Pipe SSH -> Shell Logs
+      _shellSession!.stdout.listen((data) {
+        _addShellLog(utf8.decode(data, allowMalformed: true));
+      });
+      _shellSession!.stderr.listen((data) {
+        _addShellLog(
+          utf8.decode(data, allowMalformed: true),
+          type: LogType.stderr,
+        );
+      });
+
+      _shellSession!.done.then((_) {
+        if (_disposed) return;
+        addLog('--- Interactive Shell Closed ---', type: LogType.info);
+        _shellSession = null;
+        notifyListeners();
+      });
+
+      terminalFocusNode.requestFocus();
+    } catch (e) {
+      addLog('Failed to open shell: $e', type: LogType.stderr);
+      _shellSession = null;
+      notifyListeners();
+    }
+  }
+
+  void _addShellLog(String message, {LogType type = LogType.stdout}) {
+    if (_disposed) return;
+    String cleanMessage = _stripAnsi(message);
+    if (cleanMessage.isEmpty && message.isNotEmpty) return;
+
+    _shellLogs.add(LogEntry(message: cleanMessage.trimRight(), type: type));
+    if (_shellLogs.length > 1000) _shellLogs.removeAt(0);
+
+    notifyListeners();
+
+    // Auto-scroll
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (shellScrollController.hasClients) {
+        shellScrollController.animateTo(
+          shellScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void sendShellInput(String input) {
+    if (_shellSession == null) return;
+    _shellSession!.stdin.add(utf8.encode('$input\n'));
+    // Optionally add a local echo of the command
+    // _addShellLog('$ $input', type: LogType.info);
+  }
+
+  void disconnectTerminal() {
+    _shellSession?.close();
+    _shellSession = null;
+    _shellLogs.add(
+      LogEntry(message: 'Session disconnected', type: LogType.info),
+    );
+    notifyListeners();
+  }
+
   void updateExplorerWidth(double delta, double maxWidth) {
+    if (!_isSidebarVisible) return;
+
+    // We want the center to be at least 400px
+    const double centerMinW = 400;
+    const double handleW = 24 * 2; // Two handles
+    final double currentTerminalW = _isTerminalVisible ? _terminalWidth : 0;
+    final double maxW = maxWidth - currentTerminalW - centerMinW - handleW;
+
     _explorerWidth += delta;
-    if (_explorerWidth < 200) _explorerWidth = 200;
-    if (_explorerWidth > maxWidth * 0.4) _explorerWidth = maxWidth * 0.4;
+    const double minW = 180; // Minimum width when visible
+
+    if (_explorerWidth < minW) {
+      _explorerWidth = minW;
+    }
+    if (_explorerWidth > maxW) {
+      _explorerWidth = maxW;
+    }
     notifyListeners();
   }
 
   void updateTerminalWidth(double delta, double maxWidth) {
+    if (!_isTerminalVisible) return;
+
+    // We want the center to be at least 400px
+    const double centerMinW = 400;
+    const double handleW = 24 * 2;
+    final double currentExplorerW = _isSidebarVisible ? _explorerWidth : 0;
+    final double maxW = maxWidth - currentExplorerW - centerMinW - handleW;
+
     _terminalWidth -= delta;
-    if (_terminalWidth < 200) _terminalWidth = 200;
-    if (_terminalWidth > maxWidth * 0.4) _terminalWidth = maxWidth * 0.4;
+    const double minW = 200; // Minimum width when visible
+
+    if (_terminalWidth < minW) {
+      _terminalWidth = minW;
+    }
+    if (_terminalWidth > maxW) {
+      _terminalWidth = maxW;
+    }
     notifyListeners();
   }
 
   void addLog(String message, {LogType type = LogType.info}) {
     if (_disposed) return;
-    _logs.add(LogEntry(message: message, type: type));
+    _logs.add(LogEntry(message: _stripAnsi(message), type: type));
     notifyListeners();
     _scrollToBottom();
+  }
+
+  String _stripAnsi(String input) {
+    // Regex to match ANSI escape sequences
+    final ansiRegex = RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]');
+    return input.replaceAll(ansiRegex, '');
   }
 
   void addLogEntry(LogEntry entry) {
@@ -449,21 +601,6 @@ server {
         .join('\n');
     Clipboard.setData(ClipboardData(text: allLogs));
     addLog('System: All logs copied to clipboard.', type: LogType.info);
-  }
-
-  // Terminal Session Management
-  // Terminal Session Management is removed in favor of Log Console
-  Future<void> connectTerminal(ClientConfig config) async {
-    // No-op or removed. Keeping empty method if needed for UI temporary compatibility,
-    // but better to remove.
-    // However, the screen calls this. I will remove it from the screen too.
-    // So I will remove this method entirely.
-  }
-
-  void disconnectTerminal() {
-    // No-op
-    _isTerminalConnected = false;
-    notifyListeners();
   }
 
   void clearTerminal() {
@@ -723,6 +860,8 @@ server {
   void dispose() {
     _disposed = true;
     disconnectTerminal();
+    shellScrollController.dispose();
+    terminalFocusNode.dispose();
     logScrollController.dispose();
     super.dispose();
   }
