@@ -15,6 +15,7 @@ class EditClientScreen extends StatefulWidget {
 
 class _EditClientScreenState extends State<EditClientScreen> {
   final _formKey = GlobalKey<FormState>();
+  String _deploymentType = 'backend';
 
   late TextEditingController _nameController;
   late TextEditingController _serverAliasController;
@@ -59,6 +60,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
     _passwordController = TextEditingController(text: c?.password ?? '');
     _gitUsernameController = TextEditingController(text: c?.gitUsername ?? '');
     _gitTokenController = TextEditingController(text: c?.gitToken ?? '');
+    _deploymentType = c?.type ?? 'backend';
   }
 
   @override
@@ -104,6 +106,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
         gitToken: _gitTokenController.text.isEmpty
             ? null
             : _gitTokenController.text,
+        type: _deploymentType,
       );
 
       if (widget.client == null) {
@@ -139,6 +142,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                     'SSH Destination',
                     'root@1.2.3.4',
                   ),
+                  _buildDeploymentTypeDropdown(),
                 ]),
 
                 _buildSectionHeader(
@@ -282,6 +286,70 @@ class _EditClientScreenState extends State<EditClientScreen> {
         );
       },
     );
+  }
+
+  Widget _buildDeploymentTypeDropdown() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: DropdownButtonFormField<String>(
+        value: _deploymentType,
+        decoration: InputDecoration(
+          labelText: 'Deployment Type',
+          filled: true,
+          fillColor: Colors.black.withAlpha(20),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.white, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+        ),
+        dropdownColor: Colors.grey[900],
+        style: const TextStyle(fontSize: 14, color: Colors.white),
+        items: const [
+          DropdownMenuItem(value: 'backend', child: Text('Backend (Node.js)')),
+          DropdownMenuItem(value: 'website', child: Text('Website (Next.js)')),
+        ],
+        onChanged: (value) {
+          if (value != null) {
+            setState(() {
+              _deploymentType = value;
+              _updateDefaultsForType(value);
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  void _updateDefaultsForType(String type) {
+    if (type == 'backend') {
+      _installCommandController.text = 'npm install';
+      _startCommandController.text =
+          'pm2 start server.js --name "{APP_NAME}" -- --port {PORT}';
+      _portController.text = '5001';
+      _appNameController.text = 'backend';
+      _pathOnServerController.text = '/var/www/backend';
+      _nginxConfController.text = '/etc/nginx/sites-available/backend';
+    } else if (type == 'website') {
+      _installCommandController.text = 'npm install && npm run build';
+      _startCommandController.text =
+          'pm2 start npm --name "{APP_NAME}" -- start -- --port {PORT}';
+      _portController.text = '3000';
+      _appNameController.text = 'website';
+      _pathOnServerController.text = '/var/www/website';
+      _nginxConfController.text = '/etc/nginx/sites-available/website';
+    }
   }
 
   Widget _buildTextField(

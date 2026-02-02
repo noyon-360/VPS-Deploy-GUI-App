@@ -6,6 +6,7 @@ part 'client_config.g.dart';
 class ClientConfig {
   final String id;
   final String name;
+  final String type; // 'backend' or 'website'
   final String serverAlias;
   final String repo;
   final String branch;
@@ -23,6 +24,7 @@ class ClientConfig {
   ClientConfig({
     required this.id,
     required this.name,
+    this.type = 'backend',
     required this.serverAlias,
     required this.repo,
     this.branch = 'main',
@@ -46,6 +48,7 @@ class ClientConfig {
   ClientConfig copyWith({
     String? id,
     String? name,
+    String? type,
     String? serverAlias,
     String? repo,
     String? branch,
@@ -63,6 +66,7 @@ class ClientConfig {
     return ClientConfig(
       id: id ?? this.id,
       name: name ?? this.name,
+      type: type ?? this.type,
       serverAlias: serverAlias ?? this.serverAlias,
       repo: repo ?? this.repo,
       branch: branch ?? this.branch,
