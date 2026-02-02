@@ -552,7 +552,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                       : 'Clone & Install Dependencies',
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.withValues(alpha: 0.2),
+                  backgroundColor: Colors.blue,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
@@ -617,7 +617,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                   provider.isBusy ? 'Deploying...' : 'Deploy Application',
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.withValues(alpha: 0.2),
+                  backgroundColor: Colors.green,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
@@ -686,7 +686,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                   provider.isBusy ? 'Configuring...' : 'Configure Nginx & SSL',
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.withValues(alpha: 0.2),
+                  backgroundColor: Colors.orange,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
@@ -1020,7 +1020,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
             child: Container(
               height: 48,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              color: Colors.black.withValues(alpha: 0.2),
+              color: Colors.black,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const NeverScrollableScrollPhysics(),
@@ -1203,7 +1203,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
             child: Text(
               'None found',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white,
                 fontSize: 11,
                 fontStyle: FontStyle.italic,
               ),
@@ -1257,7 +1257,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                       IconButton(
                         icon: const Icon(Icons.delete_outline, size: 14),
                         color: Colors.white.withValues(alpha: 0.3),
-                        hoverColor: Colors.redAccent.withValues(alpha: 0.2),
+                        hoverColor: Colors.redAccent,
                         onPressed: () => onDelete(item),
                         constraints: const BoxConstraints(),
                         padding: const EdgeInsets.all(4),
@@ -1298,7 +1298,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
       flex: 5,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.2),
+          color: Colors.black,
           border: Border(
             top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
           ),
@@ -1420,10 +1420,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
                           ),
                           Text(
                             file.size,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              fontSize: 10,
-                            ),
+                            style: TextStyle(color: Colors.white, fontSize: 10),
                           ),
                         ],
                       ),
@@ -1479,7 +1476,7 @@ class LogConsolePanel extends StatelessWidget {
             child: Container(
               height: 48,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              color: Colors.black.withValues(alpha: 0.2),
+              color: Colors.black,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const NeverScrollableScrollPhysics(),
