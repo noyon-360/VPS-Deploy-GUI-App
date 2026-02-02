@@ -1,12 +1,14 @@
-import 'package:deploy_gui/models/client_config.dart';
+import 'package:deploy_gui/models/temp_client_config.dart';
 import 'package:deploy_gui/models/log_entry.dart';
 import 'package:deploy_gui/services/verification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:deploy_gui/models/remote_file.dart';
 import 'package:deploy_gui/models/server_tool_status.dart';
+import 'package:deploy_gui/models/discovered_application.dart';
 import 'dart:convert'; // For utf8
 import 'package:dartssh2/dartssh2.dart'; // For SSHClient
+import 'dart:async';
 
 class EditClientProvider with ChangeNotifier {
   final VerificationService _verifier = VerificationService();
@@ -23,9 +25,11 @@ class EditClientProvider with ChangeNotifier {
   // Form State
   String _deploymentType = 'backend';
   bool _enableSSL = false;
+  bool _hasUnsavedChanges = false;
 
   String get deploymentType => _deploymentType;
   bool get enableSSL => _enableSSL;
+  bool get hasUnsavedChanges => _hasUnsavedChanges;
 
   // Sidebar visibility and widths
   bool _isSidebarVisible = false;
@@ -33,10 +37,15 @@ class EditClientProvider with ChangeNotifier {
   double _explorerWidth = 300;
   double _terminalWidth = 400;
 
+  double _centerTerminalHeight = 250;
+  bool _isCenterTerminalVisible = false;
+
   bool get isSidebarVisible => _isSidebarVisible;
   bool get isTerminalVisible => _isTerminalVisible;
+  bool get isCenterTerminalVisible => _isCenterTerminalVisible;
   double get explorerWidth => _explorerWidth;
   double get terminalWidth => _terminalWidth;
+  double get centerTerminalHeight => _centerTerminalHeight;
 
   // Connection & Verification States
   bool _isVerified = false;
@@ -64,16 +73,17 @@ class EditClientProvider with ChangeNotifier {
   String get currentPath => _currentPath;
   bool get isLoadingFiles => _isLoadingFiles;
 
-  // Terminal (xterm)
-  // Terminal Session Management
-  bool _isTerminalConnected = false;
-
-  bool get isTerminalConnected => _isTerminalConnected;
-
   // Legacy logs for verification operations
   final List<LogEntry> _logs = [];
   List<LogEntry> get logs => List.unmodifiable(_logs);
   final ScrollController logScrollController = ScrollController();
+
+  // Shell Logs for Interactive Console
+  final List<LogEntry> _shellLogs = [];
+  List<LogEntry> get shellLogs => List.unmodifiable(_shellLogs);
+  final ScrollController shellScrollController = ScrollController();
+  SSHSession? _shellSession;
+  final FocusNode terminalFocusNode = FocusNode();
 
   // Step 1: Prerequisites
   List<ServerToolStatus> _serverTools = [];
@@ -81,7 +91,16 @@ class EditClientProvider with ChangeNotifier {
   List<ServerToolStatus> get serverTools => _serverTools;
   bool get checkingTools => _checkingTools;
 
-  Future<void> checkServerPrerequisites(ClientConfig config) async {
+  // Application Discovery
+  List<DiscoveredApplication> _discoveredApps = [];
+  bool _isDiscovering = false;
+  String? _discoveryError;
+
+  List<DiscoveredApplication> get discoveredApps => _discoveredApps;
+  bool get isDiscovering => _isDiscovering;
+  String? get discoveryError => _discoveryError;
+
+  Future<void> checkServerPrerequisites(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _checkingTools = true;
@@ -115,7 +134,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> installMissingTools(ClientConfig config) async {
+  Future<void> installMissingTools(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -148,7 +167,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> cloneProject(ClientConfig config) async {
+  Future<void> cloneProject(TempClientConfig config) async {
     if (_cloning) return;
     _cloning = true;
     _isTerminalVisible = true;
@@ -227,7 +246,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> deployApp(ClientConfig config) async {
+  Future<void> deployApp(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -237,11 +256,15 @@ class EditClientProvider with ChangeNotifier {
       addLog('--- Starting Application Deployment ---', type: LogType.info);
 
       // Validate inputs
-      if (config.appName.isEmpty) throw Exception('App name is required');
-      if (config.startCommand.isEmpty)
+      if (config.appName.isEmpty) {
+        throw Exception('App name is required');
+      }
+      if (config.startCommand.isEmpty) {
         throw Exception('Start command is required');
-      if (config.pathOnServer.isEmpty)
+      }
+      if (config.pathOnServer.isEmpty) {
         throw Exception('Project path is required');
+      }
 
       final client = await _verifier.connect(config);
 
@@ -278,7 +301,7 @@ class EditClientProvider with ChangeNotifier {
     }
   }
 
-  Future<void> configureNginxAndSSL(ClientConfig config) async {
+  Future<void> configureNginxAndSSL(TempClientConfig config) async {
     if (_isBusy) return;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -396,6 +419,23 @@ server {
     notifyListeners();
   }
 
+  void markAsChanged() {
+    if (!_hasUnsavedChanges) {
+      _hasUnsavedChanges = true;
+      notifyListeners();
+    }
+  }
+
+  void markAsSaved() {
+    _hasUnsavedChanges = false;
+    notifyListeners();
+  }
+
+  void resetChangeTracking() {
+    _hasUnsavedChanges = false;
+    notifyListeners();
+  }
+
   void toggleSidebar() {
     _isSidebarVisible = !_isSidebarVisible;
     notifyListeners();
@@ -411,25 +451,167 @@ server {
     notifyListeners();
   }
 
+  void toggleCenterTerminal() {
+    _isCenterTerminalVisible = !_isCenterTerminalVisible;
+    notifyListeners();
+  }
+
+  void updateCenterTerminalHeight(double delta, double maxHeight) {
+    if (!_isCenterTerminalVisible) return;
+    _centerTerminalHeight -= delta;
+    const double minH = 100;
+    final double maxPossibleH = maxHeight * 0.8;
+
+    if (_centerTerminalHeight < minH) {
+      _centerTerminalHeight = minH;
+    }
+    if (_centerTerminalHeight > maxPossibleH) {
+      _centerTerminalHeight = maxPossibleH;
+    }
+    notifyListeners();
+  }
+
+  Future<void> connectSSHShell(TempClientConfig config) async {
+    if (_shellSession != null) {
+      _shellSession!.close();
+      _shellSession = null;
+    }
+
+    try {
+      addLog('--- Opening Interactive Shell ---', type: LogType.info);
+      _shellLogs.clear();
+      _shellLogs.add(
+        LogEntry(
+          message: 'SSH Session Started. You can type commands below.',
+          type: LogType.info,
+        ),
+      );
+      _isCenterTerminalVisible = true;
+      notifyListeners();
+
+      final client = await _verifier.connect(config);
+      _shellSession = await client.shell(
+        pty: const SSHPtyConfig(width: 80, height: 24),
+      );
+
+      // Pipe SSH -> Shell Logs
+      _shellSession!.stdout.listen((data) {
+        _addShellLog(utf8.decode(data, allowMalformed: true));
+      });
+      _shellSession!.stderr.listen((data) {
+        _addShellLog(
+          utf8.decode(data, allowMalformed: true),
+          type: LogType.stderr,
+        );
+      });
+
+      _shellSession!.done.then((_) {
+        if (_disposed) return;
+        addLog('--- Interactive Shell Closed ---', type: LogType.info);
+        _shellSession = null;
+        notifyListeners();
+      });
+
+      terminalFocusNode.requestFocus();
+    } catch (e) {
+      addLog('Failed to open shell: $e', type: LogType.stderr);
+      _shellSession = null;
+      notifyListeners();
+    }
+  }
+
+  void _addShellLog(String message, {LogType type = LogType.stdout}) {
+    if (_disposed) return;
+    String cleanMessage = _stripAnsi(message);
+    if (cleanMessage.isEmpty && message.isNotEmpty) return;
+
+    _shellLogs.add(LogEntry(message: cleanMessage.trimRight(), type: type));
+    if (_shellLogs.length > 1000) _shellLogs.removeAt(0);
+
+    notifyListeners();
+
+    // Auto-scroll
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (shellScrollController.hasClients) {
+        shellScrollController.animateTo(
+          shellScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void sendShellInput(String input) {
+    if (_shellSession == null) return;
+    _shellSession!.stdin.add(utf8.encode('$input\n'));
+    // Optionally add a local echo of the command
+    // _addShellLog('$ $input', type: LogType.info);
+  }
+
+  void disconnectTerminal() {
+    _shellSession?.close();
+    _shellSession = null;
+    _shellLogs.add(
+      LogEntry(message: 'Session disconnected', type: LogType.info),
+    );
+    _isCenterTerminalVisible = false;
+    notifyListeners();
+  }
+
   void updateExplorerWidth(double delta, double maxWidth) {
+    if (!_isSidebarVisible) return;
+
+    // We want the center to be at least 400px
+    const double centerMinW = 400;
+    const double handleW = 24 * 2; // Two handles
+    final double currentTerminalW = _isTerminalVisible ? _terminalWidth : 0;
+    final double maxW = maxWidth - currentTerminalW - centerMinW - handleW;
+
     _explorerWidth += delta;
-    if (_explorerWidth < 200) _explorerWidth = 200;
-    if (_explorerWidth > maxWidth * 0.4) _explorerWidth = maxWidth * 0.4;
+    const double minW = 180; // Minimum width when visible
+
+    if (_explorerWidth < minW) {
+      _explorerWidth = minW;
+    }
+    if (_explorerWidth > maxW) {
+      _explorerWidth = maxW;
+    }
     notifyListeners();
   }
 
   void updateTerminalWidth(double delta, double maxWidth) {
+    if (!_isTerminalVisible) return;
+
+    // We want the center to be at least 400px
+    const double centerMinW = 400;
+    const double handleW = 24 * 2;
+    final double currentExplorerW = _isSidebarVisible ? _explorerWidth : 0;
+    final double maxW = maxWidth - currentExplorerW - centerMinW - handleW;
+
     _terminalWidth -= delta;
-    if (_terminalWidth < 200) _terminalWidth = 200;
-    if (_terminalWidth > maxWidth * 0.4) _terminalWidth = maxWidth * 0.4;
+    const double minW = 200; // Minimum width when visible
+
+    if (_terminalWidth < minW) {
+      _terminalWidth = minW;
+    }
+    if (_terminalWidth > maxW) {
+      _terminalWidth = maxW;
+    }
     notifyListeners();
   }
 
   void addLog(String message, {LogType type = LogType.info}) {
     if (_disposed) return;
-    _logs.add(LogEntry(message: message, type: type));
+    _logs.add(LogEntry(message: _stripAnsi(message), type: type));
     notifyListeners();
     _scrollToBottom();
+  }
+
+  String _stripAnsi(String input) {
+    // Regex to match ANSI escape sequences
+    final ansiRegex = RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]');
+    return input.replaceAll(ansiRegex, '');
   }
 
   void addLogEntry(LogEntry entry) {
@@ -449,21 +631,6 @@ server {
         .join('\n');
     Clipboard.setData(ClipboardData(text: allLogs));
     addLog('System: All logs copied to clipboard.', type: LogType.info);
-  }
-
-  // Terminal Session Management
-  // Terminal Session Management is removed in favor of Log Console
-  Future<void> connectTerminal(ClientConfig config) async {
-    // No-op or removed. Keeping empty method if needed for UI temporary compatibility,
-    // but better to remove.
-    // However, the screen calls this. I will remove it from the screen too.
-    // So I will remove this method entirely.
-  }
-
-  void disconnectTerminal() {
-    // No-op
-    _isTerminalConnected = false;
-    notifyListeners();
   }
 
   void clearTerminal() {
@@ -496,7 +663,7 @@ server {
     });
   }
 
-  Future<void> testConnection(ClientConfig tempConfig) async {
+  Future<void> testConnection(TempClientConfig tempConfig) async {
     if (_isBusy) return;
     _isBusy = true;
     _isVerifying = true;
@@ -530,7 +697,7 @@ server {
     }
   }
 
-  Future<void> refreshServerState(ClientConfig tempConfig) async {
+  Future<void> refreshServerState(TempClientConfig tempConfig) async {
     if (!_isVerified) return;
 
     final apps = await _verifier.getRunningApps(
@@ -554,7 +721,7 @@ server {
   }
 
   // File Explorer Methods
-  Future<void> fetchFiles(ClientConfig config, String path) async {
+  Future<void> fetchFiles(TempClientConfig config, String path) async {
     _isLoadingFiles = true;
     notifyListeners();
 
@@ -575,7 +742,7 @@ server {
     notifyListeners();
   }
 
-  Future<void> navigateUp(ClientConfig config) async {
+  Future<void> navigateUp(TempClientConfig config) async {
     if (_currentPath == '/') return;
 
     // Simple path manipulation for parent
@@ -588,11 +755,11 @@ server {
     await fetchFiles(config, parentPath);
   }
 
-  Future<void> navigateTo(ClientConfig config, String path) async {
+  Future<void> navigateTo(TempClientConfig config, String path) async {
     await fetchFiles(config, path);
   }
 
-  Future<void> catFile(ClientConfig config, String path) async {
+  Future<void> catFile(TempClientConfig config, String path) async {
     if (_isBusy) return;
     _isBusy = true;
     notifyListeners();
@@ -610,7 +777,7 @@ server {
     }
   }
 
-  Future<void> checkApp(ClientConfig tempConfig, String appName) async {
+  Future<void> checkApp(TempClientConfig tempConfig, String appName) async {
     if (!_isVerified || appName.isEmpty || _isBusy) return;
 
     _isBusy = true;
@@ -637,7 +804,7 @@ server {
     }
   }
 
-  Future<void> checkDomain(ClientConfig tempConfig, String domain) async {
+  Future<void> checkDomain(TempClientConfig tempConfig, String domain) async {
     if (!_isVerified || domain.isEmpty || _isBusy) return;
 
     _isBusy = true;
@@ -664,7 +831,7 @@ server {
     }
   }
 
-  Future<bool> deleteApp(ClientConfig tempConfig, String appName) async {
+  Future<bool> deleteApp(TempClientConfig config, String appName) async {
     if (_isBusy) return false;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -674,14 +841,14 @@ server {
       addLog('--- Deletion Started: PM2 App $appName ---', type: LogType.info);
 
       final success = await _verifier.deletePm2App(
-        tempConfig,
+        config,
         appName,
         onLog: _handleServiceLog,
       );
 
       if (success) {
         addLog('--- Deletion Successful: $appName ---', type: LogType.info);
-        await refreshServerState(tempConfig);
+        await refreshServerState(config);
       }
       return success;
     } finally {
@@ -690,7 +857,7 @@ server {
     }
   }
 
-  Future<bool> deleteSite(ClientConfig tempConfig, String siteName) async {
+  Future<bool> deleteSite(TempClientConfig config, String siteName) async {
     if (_isBusy) return false;
     _isBusy = true;
     _isTerminalVisible = true;
@@ -703,14 +870,14 @@ server {
       );
 
       final success = await _verifier.deleteNginxSite(
-        tempConfig,
+        config,
         siteName,
         onLog: _handleServiceLog,
       );
 
       if (success) {
         addLog('--- Deletion Successful: $siteName ---', type: LogType.info);
-        await refreshServerState(tempConfig);
+        await refreshServerState(config);
       }
       return success;
     } finally {
@@ -719,10 +886,142 @@ server {
     }
   }
 
+  /// Discover deployed applications on the server
+  Future<void> discoverApplications(TempClientConfig config) async {
+    if (!_isVerified) {
+      addLog('Please verify connection first', type: LogType.stderr);
+      return;
+    }
+
+    _isDiscovering = true;
+    _discoveryError = null;
+    _isSidebarVisible = true;
+    _isTerminalVisible = true;
+    notifyListeners();
+
+    try {
+      addLog('--- Starting Application Discovery ---', type: LogType.info);
+
+      final apps = await _verifier.discoverApplications(
+        config,
+        onLog: _handleServiceLog,
+      );
+
+      _discoveredApps = apps;
+
+      if (apps.isEmpty) {
+        addLog('No applications found in /var/www', type: LogType.info);
+      } else {
+        addLog(
+          '--- Discovery Complete: Found ${apps.length} application(s) ---',
+          type: LogType.info,
+        );
+      }
+    } catch (e) {
+      _discoveryError = e.toString();
+      addLog('Discovery failed: $e', type: LogType.stderr);
+    } finally {
+      _isDiscovering = false;
+      notifyListeners();
+    }
+  }
+
+  /// Populate form fields from a discovered application
+  /// Returns a callback that the screen can use to update text controllers
+  Map<String, String> populateFromDiscoveredApp(DiscoveredApplication app) {
+    addLog(
+      '--- Populating form from: ${app.displayName} ---',
+      type: LogType.info,
+    );
+
+    // Build a map of field values to return
+    final Map<String, String> fieldValues = {};
+
+    if (app.repoUrl != null) {
+      fieldValues['repoUrl'] = app.repoUrl!;
+      addLog('  Repository: ${app.repoUrl}');
+    }
+
+    if (app.branch != null) {
+      fieldValues['branch'] = app.branch!;
+      addLog('  Branch: ${app.branch}');
+    }
+
+    if (app.appName != null) {
+      fieldValues['appName'] = app.appName!;
+      addLog('  App Name: ${app.appName}');
+    }
+
+    if (app.pathOnServer.isNotEmpty) {
+      fieldValues['pathOnServer'] = app.pathOnServer;
+      addLog('  Path: ${app.pathOnServer}');
+    }
+
+    if (app.port != null) {
+      fieldValues['port'] = app.port!;
+      addLog('  Port: ${app.port}');
+    }
+
+    if (app.domain != null) {
+      fieldValues['domain'] = app.domain!;
+      addLog('  Domain: ${app.domain}');
+    }
+
+    if (app.installCommand != null) {
+      fieldValues['installCommand'] = app.installCommand!;
+      addLog('  Install Command: ${app.installCommand}');
+    }
+
+    if (app.startCommand != null) {
+      fieldValues['startCommand'] = app.startCommand!;
+      addLog('  Start Command: ${app.startCommand}');
+    }
+
+    if (app.gitUsername != null) {
+      fieldValues['gitUsername'] = app.gitUsername!;
+      addLog('  Git Username: ${app.gitUsername}');
+    }
+
+    if (app.gitToken != null) {
+      fieldValues['gitToken'] = app.gitToken!;
+      addLog('  Git Token: [HIDDEN]');
+    }
+
+    if (app.nginxConfigPath != null) {
+      fieldValues['nginxConf'] = app.nginxConfigPath!;
+      addLog('  Nginx Config: ${app.nginxConfigPath}');
+    }
+
+    if (app.sslEmail != null) {
+      fieldValues['sslEmail'] = app.sslEmail!;
+      addLog('  SSL Email: ${app.sslEmail}');
+    }
+
+    // Update SSL state
+    if (app.hasSSL) {
+      _enableSSL = true;
+      addLog('  SSL: Enabled');
+    }
+
+    addLog('--- Form populated successfully ---', type: LogType.info);
+    notifyListeners();
+
+    return fieldValues;
+  }
+
+  /// Clear discovered applications list
+  void clearDiscoveredApps() {
+    _discoveredApps.clear();
+    _discoveryError = null;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _disposed = true;
     disconnectTerminal();
+    shellScrollController.dispose();
+    terminalFocusNode.dispose();
     logScrollController.dispose();
     super.dispose();
   }

@@ -1,48 +1,27 @@
+import 'package:deploy_gui/models/repository_config.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'client_config.g.dart';
 
-@JsonSerializable()
+@JsonSerializable(explicitToJson: true)
 class ClientConfig {
   final String id;
   final String name;
-  final String type; // 'backend' or 'website'
-  final String serverAlias;
-  final String repo;
-  final String branch;
-  final String domain;
-  final String port;
-  final String appName;
-  final String pathOnServer;
-  final String nginxConf;
-  final String installCommand;
-  final String startCommand;
+  final String serverAlias; // SSH IP address - Primary unique identifier
   final String? password;
-  final String? gitUsername;
-  final String? gitToken;
-  final bool enableSSL;
-  final String? sslEmail;
+  final List<RepositoryConfig> repositories;
+  final DateTime createdAt;
+  final DateTime? lastConnected;
 
   ClientConfig({
     required this.id,
     required this.name,
-    this.type = 'backend',
-    this.serverAlias = '',
-    required this.repo,
-    this.branch = 'main',
-    required this.domain,
-    this.port = '3000',
-    required this.appName,
-    required this.pathOnServer,
-    required this.nginxConf,
-    this.installCommand = 'npm install',
-    this.startCommand = 'pm2 start server.js',
+    required this.serverAlias,
     this.password,
-    this.gitUsername,
-    this.gitToken,
-    this.enableSSL = false,
-    this.sslEmail,
-  });
+    this.repositories = const [],
+    DateTime? createdAt,
+    this.lastConnected,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   factory ClientConfig.fromJson(Map<String, dynamic> json) =>
       _$ClientConfigFromJson(json);
@@ -51,42 +30,52 @@ class ClientConfig {
   ClientConfig copyWith({
     String? id,
     String? name,
-    String? type,
     String? serverAlias,
-    String? repo,
-    String? branch,
-    String? domain,
-    String? port,
-    String? appName,
-    String? pathOnServer,
-    String? nginxConf,
-    String? installCommand,
-    String? startCommand,
     String? password,
-    String? gitUsername,
-    String? gitToken,
-    bool? enableSSL,
-    String? sslEmail,
+    List<RepositoryConfig>? repositories,
+    DateTime? createdAt,
+    DateTime? lastConnected,
   }) {
     return ClientConfig(
       id: id ?? this.id,
       name: name ?? this.name,
-      type: type ?? this.type,
       serverAlias: serverAlias ?? this.serverAlias,
-      repo: repo ?? this.repo,
-      branch: branch ?? this.branch,
-      domain: domain ?? this.domain,
-      port: port ?? this.port,
-      appName: appName ?? this.appName,
-      pathOnServer: pathOnServer ?? this.pathOnServer,
-      nginxConf: nginxConf ?? this.nginxConf,
-      installCommand: installCommand ?? this.installCommand,
-      startCommand: startCommand ?? this.startCommand,
       password: password ?? this.password,
-      gitUsername: gitUsername ?? this.gitUsername,
-      gitToken: gitToken ?? this.gitToken,
-      enableSSL: enableSSL ?? this.enableSSL,
-      sslEmail: sslEmail ?? this.sslEmail,
+      repositories: repositories ?? this.repositories,
+      createdAt: createdAt ?? this.createdAt,
+      lastConnected: lastConnected ?? this.lastConnected,
     );
+  }
+
+  // Helper methods
+  RepositoryConfig? findRepository(String repoUrl) {
+    try {
+      return repositories.firstWhere((repo) => repo.repoUrl == repoUrl);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  ClientConfig addRepository(RepositoryConfig repo) {
+    return copyWith(repositories: [...repositories, repo]);
+  }
+
+  ClientConfig updateRepository(String repoUrl, RepositoryConfig updatedRepo) {
+    final updatedRepos = repositories.map((repo) {
+      return repo.repoUrl == repoUrl ? updatedRepo : repo;
+    }).toList();
+    return copyWith(repositories: updatedRepos);
+  }
+
+  ClientConfig removeRepository(String repoUrl) {
+    return copyWith(
+      repositories: repositories
+          .where((repo) => repo.repoUrl != repoUrl)
+          .toList(),
+    );
+  }
+
+  ClientConfig updateLastConnected() {
+    return copyWith(lastConnected: DateTime.now());
   }
 }

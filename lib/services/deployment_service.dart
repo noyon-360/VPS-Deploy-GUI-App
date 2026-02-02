@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:dartssh2/dartssh2.dart';
-import 'package:deploy_gui/models/client_config.dart';
+import 'package:deploy_gui/models/temp_client_config.dart';
 
 class DeploymentService {
-  Future<Stream<String>> deploy(String mode, ClientConfig config) async {
+  Future<Stream<String>> deploy(String mode, TempClientConfig config) async {
     final List<String> commands = _getCommands(mode, config);
     final String fullCommand = commands.join('\n');
 
@@ -18,7 +18,7 @@ class DeploymentService {
 
   Future<Stream<String>> _deployWithPassword(
     String fullCommand,
-    ClientConfig config,
+    TempClientConfig config,
   ) async {
     final controller = StreamController<String>();
 
@@ -61,7 +61,7 @@ class DeploymentService {
 
   Future<Stream<String>> _deployWithSystemSsh(
     String fullCommand,
-    ClientConfig config,
+    TempClientConfig config,
   ) async {
     final process = await Process.start('ssh', [
       config.serverAlias,
@@ -84,7 +84,7 @@ class DeploymentService {
     return {'user': 'root', 'host': alias};
   }
 
-  List<String> _getCommands(String mode, ClientConfig config) {
+  List<String> _getCommands(String mode, TempClientConfig config) {
     // Robust Bash Script Generation
     // We combine initial/update logic into smart checking scripts where possible.
     // 'set -e' ensures the script stops immediately if any command fails.
@@ -159,7 +159,7 @@ sudo mv /tmp/${config.appName}.nginx ${config.nginxConf}
     return cmds;
   }
 
-  String _getNginxConfigContent(ClientConfig config) {
+  String _getNginxConfigContent(TempClientConfig config) {
     // Escaping specific for Bash echo
     return '''
 server {
@@ -179,7 +179,7 @@ server {
 ''';
   }
 
-  String _resolveRepoUrl(ClientConfig config) {
+  String _resolveRepoUrl(TempClientConfig config) {
     if (config.gitUsername != null &&
         config.gitToken != null &&
         config.repo.startsWith('http')) {
@@ -191,7 +191,7 @@ server {
     return config.repo;
   }
 
-  String _resolveStartCommand(ClientConfig config) {
+  String _resolveStartCommand(TempClientConfig config) {
     return config.startCommand
         .replaceAll('{APP_NAME}', config.appName)
         .replaceAll('{PORT}', config.port);
