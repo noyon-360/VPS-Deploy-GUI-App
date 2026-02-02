@@ -85,45 +85,98 @@ class DeploymentService {
   }
 
   List<String> _getCommands(String mode, ClientConfig config) {
-    List<String> cmds = [];
-    if (mode == 'initial') {
-      cmds = [
-        'sudo apt update && sudo apt upgrade -y',
-        'sudo apt install -y git nginx nodejs npm',
-        'sudo npm install -g pm2',
-        'sudo mkdir -p ${config.pathOnServer}',
-        'sudo chown \$USER:\$USER ${config.pathOnServer}',
-        'cd ${config.pathOnServer}',
-        'git clone ${_resolveRepoUrl(config)} .',
-        'git checkout ${config.branch}',
-        config.installCommand,
-        _resolveStartCommand(config),
-        'pm2 startup',
-        'pm2 save',
-        _getNginxConfig(config),
-        'sudo ln -s ${config.nginxConf} /etc/nginx/sites-enabled/',
-        'sudo nginx -t && sudo systemctl restart nginx',
-      ];
-    } else {
-      cmds = [
-        'cd ${config.pathOnServer}',
-        'git remote set-url origin ${_resolveRepoUrl(config)}',
-        'git pull origin ${config.branch}',
-        config.installCommand,
-        'pm2 restart ${config.appName}',
-        'sudo systemctl restart nginx',
-      ];
-    }
+    // Robust Bash Script Generation
+    // We combine initial/update logic into smart checking scripts where possible.
+    // 'set -e' ensures the script stops immediately if any command fails.
 
+    final repoUrl = _resolveRepoUrl(config);
+    final startCmd = _resolveStartCommand(config);
+    final nginxConfigContent = _getNginxConfigContent(config);
+
+    List<String> cmds = [
+      'set -e', // Exit immediately if a command exits with a non-zero status.
+      // 1. Install Dependencies (Idempotent: apt install -y skips if already installed)
+      'sudo apt update',
+      'sudo apt install -y git nginx nodejs npm',
+      'sudo npm install -g pm2',
+
+      // 2. Prepare Directory
+      'sudo mkdir -p ${config.pathOnServer}',
+      'sudo chown \$USER:\$USER ${config.pathOnServer}',
+      'cd ${config.pathOnServer}',
+
+      // 3. Git Logic (Check if repo exists)
+      '''
+if [ -d ".git" ]; then
+  echo ">>> Repo exists. Pulling latest changes..."
+  git remote set-url origin $repoUrl
+  git fetch origin
+  git reset --hard origin/${config.branch}
+else
+  echo ">>> Cloning repository..."
+  git clone $repoUrl .
+  git checkout ${config.branch}
+fi
+''',
+
+      // 4. Install Dependencies
+      config.installCommand,
+
+      // 5. PM2 Logic (Check if app exists)
+      '''
+if pm2 describe ${config.appName} > /dev/null; then
+  echo ">>> App '${config.appName}' is running. Restarting..."
+  pm2 restart ${config.appName}
+else
+  echo ">>> Starting app '${config.appName}'..."
+  $startCmd
+  pm2 save
+fi
+''',
+
+      // 6. Nginx Configuration
+      // Write config content to a temp file then move it (avoids sudo piping issues)
+      '''
+echo "$nginxConfigContent" > /tmp/${config.appName}.nginx
+sudo mv /tmp/${config.appName}.nginx ${config.nginxConf}
+''',
+      // Force Link (ln -sf)
+      'sudo ln -sf ${config.nginxConf} /etc/nginx/sites-enabled/',
+      'sudo nginx -t',
+      'sudo systemctl restart nginx',
+    ];
+
+    // 7. SSL Logic (Certbot)
     if (config.enableSSL && config.sslEmail != null) {
+      // Certbot is generally interactive or fails if not carefully flags.
+      // --reinstall or keep-until-expiring are implicit usually.
       cmds.addAll([
-        'sudo apt update',
         'sudo apt install -y certbot python3-certbot-nginx',
-        'sudo certbot --nginx -d ${config.domain} -m ${config.sslEmail} --agree-tos --non-interactive',
+        'sudo certbot --nginx -d ${config.domain} -m ${config.sslEmail} --agree-tos --non-interactive --redirect',
       ]);
     }
 
     return cmds;
+  }
+
+  String _getNginxConfigContent(ClientConfig config) {
+    // Escaping specific for Bash echo
+    return '''
+server {
+    listen 80;
+    server_name ${config.domain};
+    client_max_body_size 100M;
+    
+    location / {
+        proxy_pass http://localhost:${config.port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \\\$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \\\$host;
+        proxy_cache_bypass \\\$http_upgrade;
+    }
+}
+''';
   }
 
   String _resolveRepoUrl(ClientConfig config) {
@@ -142,26 +195,5 @@ class DeploymentService {
     return config.startCommand
         .replaceAll('{APP_NAME}', config.appName)
         .replaceAll('{PORT}', config.port);
-  }
-
-  String _getNginxConfig(ClientConfig config) {
-    return '''
-sudo tee ${config.nginxConf} > /dev/null <<'NGINX'
-server {
-    listen 80;
-    server_name ${config.domain};
-    client_max_body_size 100M;
-    
-    location / {
-        proxy_pass http://localhost:${config.port};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \\\$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \\\$host;
-        proxy_cache_bypass \\\$http_upgrade;
-    }
-}
-NGINX
-''';
   }
 }
