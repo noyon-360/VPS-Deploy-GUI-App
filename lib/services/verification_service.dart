@@ -185,6 +185,34 @@ class VerificationService {
     }
   }
 
+  Future<bool> runInteractiveCommand(
+    ClientConfig config,
+    String command, {
+    required Function(String, bool isError) onOutput,
+  }) async {
+    try {
+      final client = await _connect(config);
+      final session = await client.execute(command);
+
+      // Handle stdout
+      final stdoutFuture = session.stdout.listen((event) {
+        onOutput(utf8.decode(event), false);
+      }).asFuture();
+
+      // Handle stderr
+      final stderrFuture = session.stderr.listen((event) {
+        onOutput(utf8.decode(event), true);
+      }).asFuture();
+
+      await Future.wait([stdoutFuture, stderrFuture]);
+      client.close();
+      return true;
+    } catch (e) {
+      onOutput('Error executing command: $e', true);
+      return false;
+    }
+  }
+
   Future<SSHClient> _connect(ClientConfig config) async {
     final parts = _parseConnection(config.serverAlias);
     final socket = await SSHSocket.connect(parts['host']!, 22);

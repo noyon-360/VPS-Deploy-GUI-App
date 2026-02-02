@@ -1,6 +1,6 @@
 import 'package:deploy_gui/models/client_config.dart';
 import 'package:deploy_gui/providers/app_provider.dart';
-import 'package:deploy_gui/services/verification_service.dart';
+import 'package:deploy_gui/providers/edit_client_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -16,13 +16,6 @@ class EditClientScreen extends StatefulWidget {
 
 class _EditClientScreenState extends State<EditClientScreen> {
   final _formKey = GlobalKey<FormState>();
-  String _deploymentType = 'backend';
-  bool _enableSSL = false;
-  late TextEditingController _sslEmailController;
-  final VerificationService _verifier = VerificationService();
-  bool _isVerified = false;
-  bool _isVerifying = false;
-  String? _verificationStatus;
 
   late TextEditingController _nameController;
   late TextEditingController _serverAliasController;
@@ -38,21 +31,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
   late TextEditingController _passwordController;
   late TextEditingController _gitUsernameController;
   late TextEditingController _gitTokenController;
-
-  // Verification States: 0=Initial, 1=Loading, 2=Available(Green), 3=Exists(Orange/Warning)
-  int _appVerificationState = 0;
-  int _domainVerificationState = 0;
-
-  List<String> _runningApps = [];
-  List<String> _activeSites = [];
-
-  // Terminal Logs
-  final List<String> _logs = [];
-  bool _isTerminalVisible = false;
-  bool _isSidebarVisible = false; // New left sidebar state
-  double _explorerWidth = 300;
-  double _terminalWidth = 400;
-  final ScrollController _logScrollController = ScrollController();
+  late TextEditingController _sslEmailController;
 
   @override
   void initState() {
@@ -82,8 +61,6 @@ class _EditClientScreenState extends State<EditClientScreen> {
     _passwordController = TextEditingController(text: c?.password ?? '');
     _gitUsernameController = TextEditingController(text: c?.gitUsername ?? '');
     _gitTokenController = TextEditingController(text: c?.gitToken ?? '');
-    _deploymentType = c?.type ?? 'backend';
-    _enableSSL = c?.enableSSL ?? false;
     _sslEmailController = TextEditingController(text: c?.sslEmail ?? '');
   }
 
@@ -107,7 +84,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
     super.dispose();
   }
 
-  void _save() {
+  void _save(EditClientProvider provider) async {
     if (_formKey.currentState!.validate()) {
       final config = ClientConfig(
         id: widget.client?.id ?? const Uuid().v4(),
@@ -131,215 +108,57 @@ class _EditClientScreenState extends State<EditClientScreen> {
         gitToken: _gitTokenController.text.isEmpty
             ? null
             : _gitTokenController.text,
-        type: _deploymentType,
-        enableSSL: _enableSSL,
-        sslEmail: _enableSSL && _sslEmailController.text.isNotEmpty
+        type: provider.deploymentType,
+        enableSSL: provider.enableSSL,
+        sslEmail: provider.enableSSL && _sslEmailController.text.isNotEmpty
             ? _sslEmailController.text
             : null,
       );
 
       if (widget.client == null) {
-        context.read<AppProvider>().addClient(config);
+        await context.read<AppProvider>().addClient(config);
       } else {
-        context.read<AppProvider>().updateClient(config);
+        await context.read<AppProvider>().updateClient(config);
       }
-      Navigator.pop(context);
-    }
-  }
-
-  void _addLog(String message) {
-    if (mounted) {
-      setState(() {
-        _logs.add(
-          '${DateTime.now().toIso8601String().split('T')[1].substring(0, 8)} $message',
-        );
-        // Auto-show terminal on new significant logs if preferred, or just let user toggle
-      });
-      // Scroll to bottom
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_logScrollController.hasClients) {
-          _logScrollController.jumpTo(
-            _logScrollController.position.maxScrollExtent,
-          );
-        }
-      });
-    }
-  }
-
-  Future<void> _testConnection() async {
-    setState(() {
-      _isVerifying = true;
-      _verificationStatus = 'Connecting...';
-      _logs.clear();
-      _isTerminalVisible = true; // Auto-open terminal on manual test
-    });
-
-    _addLog('--- Starting Connection Test ---');
-
-    final tempConfig = ClientConfig(
-      id: 'temp',
-      name: 'temp',
-      serverAlias: _serverAliasController.text,
-      repo: '',
-      appName: '',
-      pathOnServer: '',
-      nginxConf: '',
-      domain: '',
-      password: _passwordController.text.isEmpty
-          ? null
-          : _passwordController.text,
-    );
-
-    final success = await _verifier.verifyConnection(
-      tempConfig,
-      onLog: _addLog,
-    );
-
-    if (mounted) {
-      setState(() {
-        _isVerifying = false;
-        _isVerified = success;
-        _verificationStatus = success
-            ? 'Connection Successful'
-            : 'Connection Failed. Check credentials.';
-      });
-
-      _addLog('--- Test Completed. Success: $success ---');
-
-      if (success) {
-        // Fetch Info
-        final apps = await _verifier.getRunningApps(tempConfig, onLog: _addLog);
-        final sites = await _verifier.getActiveSites(
-          tempConfig,
-          onLog: _addLog,
-        );
-        if (mounted) {
-          setState(() {
-            _runningApps = apps;
-            _activeSites = sites;
-          });
-        }
+      if (mounted) {
+        Navigator.pop(context);
       }
     }
   }
 
-  Future<void> _checkApp() async {
-    if (!_isVerified || _appNameController.text.isEmpty) return;
+  // Methods moved to EditClientProvider
 
-    setState(() => _appVerificationState = 1); // Loading
-    _addLog('--- Checking App Name: ${_appNameController.text} ---');
-
-    final tempConfig = _createTempConfig();
-    final exists = await _verifier.checkPm2Exists(
-      tempConfig,
-      _appNameController.text,
-      onLog: _addLog,
-    );
-
-    if (mounted) {
-      setState(() {
-        // If exists -> 3 (Warning), If not -> 2 (Green/Available)
-        _appVerificationState = exists ? 3 : 2;
-      });
-      _addLog('--- App Check Completed. Exists: $exists ---');
-    }
-  }
-
-  Future<void> _checkDomain() async {
-    if (!_isVerified || _domainController.text.isEmpty) return;
-
-    setState(() => _domainVerificationState = 1); // Loading
-    _addLog('--- Checking Domain: ${_domainController.text} ---');
-
-    final tempConfig = _createTempConfig();
-    final exists = await _verifier.checkDomainConfigExists(
-      tempConfig,
-      _domainController.text,
-      onLog: _addLog,
-    );
-
-    if (mounted) {
-      setState(() {
-        _domainVerificationState = exists ? 3 : 2;
-      });
-      _addLog('--- Domain Check Completed. Exists: $exists ---');
-    }
-  }
-
-  Future<void> _deleteApp(String appName) async {
+  Future<void> _deleteApp(EditClientProvider provider, String appName) async {
     final confirmed = await _showConfirmDialog(
       'Delete PM2 App',
       'Are you sure you want to delete "$appName" from the server?',
     );
     if (!confirmed) return;
-
-    setState(() => _isTerminalVisible = true);
-    _addLog('--- Deletion Started: PM2 App $appName ---');
-    final tempConfig = _createTempConfig();
-    final success = await _verifier.deletePm2App(
-      tempConfig,
-      appName,
-      onLog: _addLog,
-    );
-
-    if (success) {
-      _addLog('--- Deletion Successful: $appName ---');
-      await _refreshServerState();
-    }
+    await provider.deleteApp(_createTempConfig(), appName);
   }
 
-  Future<void> _deleteSite(String siteName) async {
+  Future<void> _deleteSite(EditClientProvider provider, String siteName) async {
     final confirmed = await _showConfirmDialog(
       'Delete Nginx Site',
       'Are you sure you want to delete Nginx configuration for "$siteName"?',
     );
     if (!confirmed) return;
+    await provider.deleteSite(_createTempConfig(), siteName);
+  }
 
-    setState(() => _isTerminalVisible = true);
-    _addLog('--- Deletion Started: Nginx Site $siteName ---');
-    final tempConfig = _createTempConfig();
-    final success = await _verifier.deleteNginxSite(
-      tempConfig,
-      siteName,
-      onLog: _addLog,
-    );
-
-    if (success) {
-      _addLog('--- Deletion Successful: $siteName ---');
-      await _refreshServerState();
+  void _selectApp(EditClientProvider provider, String appName) {
+    _appNameController.text = appName;
+    // Also try to guess default path/conf if they seem to follow the name
+    if (_pathOnServerController.text.contains('backend') ||
+        _pathOnServerController.text.contains('website')) {
+      _pathOnServerController.text = '/var/www/$appName';
     }
+    provider.checkApp(_createTempConfig(), appName);
   }
 
-  Future<void> _refreshServerState() async {
-    if (!_isVerified) return;
-    final tempConfig = _createTempConfig();
-    final apps = await _verifier.getRunningApps(tempConfig, onLog: _addLog);
-    final sites = await _verifier.getActiveSites(tempConfig, onLog: _addLog);
-    if (mounted) {
-      setState(() {
-        _runningApps = apps;
-        _activeSites = sites;
-      });
-    }
-  }
-
-  void _selectApp(String appName) {
-    setState(() {
-      _appNameController.text = appName;
-      // Also try to guess default path/conf if they seem to follow the name
-      if (_pathOnServerController.text.contains('backend') ||
-          _pathOnServerController.text.contains('website')) {
-        _pathOnServerController.text = '/var/www/$appName';
-      }
-    });
-    _checkApp(); // Trigger validation UI
-  }
-
-  void _selectSite(String domain) {
-    setState(() {
-      _domainController.text = domain;
-    });
-    _checkDomain(); // Trigger validation UI
+  void _selectSite(EditClientProvider provider, String domain) {
+    _domainController.text = domain;
+    provider.checkDomain(_createTempConfig(), domain);
   }
 
   Future<bool> _showConfirmDialog(String title, String content) async {
@@ -382,401 +201,440 @@ class _EditClientScreenState extends State<EditClientScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.client == null ? 'Add New Client' : 'Edit Client'),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
-      body: Row(
-        children: [
-          _buildExplorerSidebar(),
-          _buildResizeHandle(isLeft: true),
-          Expanded(
-            child: Center(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 40.0,
-                    vertical: 24.0,
-                  ),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _buildSectionHeader(
-                          'Credentials & Connection',
-                          Icons.key_outlined,
+    return ChangeNotifierProvider(
+      create: (_) => EditClientProvider()
+        ..setDeploymentType(widget.client?.type ?? 'backend')
+        ..setEnableSSL(widget.client?.enableSSL ?? false),
+      child: Consumer<EditClientProvider>(
+        builder: (context, provider, child) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(
+                widget.client == null ? 'Add New Client' : 'Edit Client',
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+            ),
+            body: Row(
+              children: [
+                _buildExplorerSidebar(provider),
+                _buildResizeHandle(provider, isLeft: true),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40.0,
+                          vertical: 24.0,
                         ),
-                        _buildCardLayout([
-                          _buildTextField(
-                            _serverAliasController,
-                            'SSH Destination',
-                            'root@1.2.3.4',
-                          ),
-                          _buildTextField(
-                            _passwordController,
-                            'SSH Password',
-                            'Leave blank to use keys',
-                            isPassword: true,
-                          ),
-                        ]),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: ElevatedButton.icon(
-                            onPressed: _isVerifying ? null : _testConnection,
-                            icon: _isVerifying
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              _buildSectionHeader(
+                                'Credentials & Connection',
+                                Icons.key_outlined,
+                              ),
+                              _buildCardLayout([
+                                _buildTextField(
+                                  _serverAliasController,
+                                  'SSH Destination',
+                                  'root@1.2.3.4',
+                                ),
+                                _buildTextField(
+                                  _passwordController,
+                                  'SSH Password',
+                                  'Leave blank to use keys',
+                                  isPassword: true,
+                                ),
+                              ]),
+                              const SizedBox(height: 16),
+                              Center(
+                                child: ElevatedButton.icon(
+                                  onPressed: provider.isVerifying
+                                      ? null
+                                      : () => provider.testConnection(
+                                          _createTempConfig(),
+                                        ),
+                                  icon: provider.isVerifying
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Icon(
+                                          provider.isVerified
+                                              ? Icons.check_circle
+                                              : Icons.wifi,
+                                          color: provider.isVerified
+                                              ? Colors.green
+                                              : Colors.white,
+                                        ),
+                                  label: Text(
+                                    provider.isVerified
+                                        ? 'Connected'
+                                        : 'Test Connection',
+                                    style: TextStyle(
+                                      color: provider.isVerified
+                                          ? Colors.green
+                                          : Colors.white,
                                     ),
-                                  )
-                                : Icon(
-                                    _isVerified
-                                        ? Icons.check_circle
-                                        : Icons.wifi,
-                                    color: _isVerified
-                                        ? Colors.green
-                                        : Colors.white,
                                   ),
-                            label: Text(
-                              _isVerified ? 'Connected' : 'Test Connection',
-                              style: TextStyle(
-                                color: _isVerified
-                                    ? Colors.green
-                                    : Colors.white,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.08,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (_verificationStatus != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Center(
-                              child: Text(
-                                _verificationStatus!,
-                                style: TextStyle(
-                                  color: _isVerified
-                                      ? Colors.green
-                                      : Colors.redAccent,
-                                  fontSize: 12,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 16,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
+                              if (provider.verificationStatus != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Center(
+                                    child: Text(
+                                      provider.verificationStatus!,
+                                      style: TextStyle(
+                                        color: provider.isVerified
+                                            ? Colors.green
+                                            : Colors.redAccent,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
 
-                        if (_isVerified &&
-                            (_runningApps.isNotEmpty ||
-                                _activeSites.isNotEmpty))
-                          Padding(
-                            padding: const EdgeInsets.only(top: 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_runningApps.isNotEmpty) ...[
-                                  Text(
-                                    'Running PM2 Apps:',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
+                              if (provider.isVerified &&
+                                  (provider.runningApps.isNotEmpty ||
+                                      provider.activeSites.isNotEmpty))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 16.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (provider.runningApps.isNotEmpty) ...[
+                                        Text(
+                                          'Running PM2 Apps:',
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.7,
+                                            ),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: provider.runningApps
+                                              .map(
+                                                (app) => Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.green
+                                                        .withValues(alpha: 0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: Colors.green
+                                                          .withValues(
+                                                            alpha: 0.3,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    app,
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.greenAccent,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                        const SizedBox(height: 12),
+                                      ],
+                                      if (provider.activeSites.isNotEmpty) ...[
+                                        Text(
+                                          'Active Nginx Sites:',
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.7,
+                                            ),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: provider.activeSites
+                                              .map(
+                                                (site) => Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blue
+                                                        .withValues(alpha: 0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: Colors.blue
+                                                          .withValues(
+                                                            alpha: 0.3,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    site,
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors
+                                                          .lightBlueAccent,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+
+                              if (provider.isVerified) ...[
+                                _buildSectionHeader(
+                                  'General Information',
+                                  Icons.info_outline,
+                                ),
+                                _buildCardLayout([
+                                  _buildTextField(
+                                    _nameController,
+                                    'Client Name',
+                                    'My Website',
+                                  ),
+                                  _buildDeploymentTypeDropdown(provider),
+                                ]),
+
+                                _buildSectionHeader(
+                                  'Deployment Settings',
+                                  Icons.settings_outlined,
+                                ),
+                                _buildCardLayout([
+                                  _buildTextField(
+                                    _repoController,
+                                    'Git Repository',
+                                    'git@github.com:user/repo.git',
+                                  ),
+                                  _buildTextField(
+                                    _branchController,
+                                    'Branch',
+                                    'main',
+                                  ),
+                                  Focus(
+                                    onFocusChange: (hasNext) {
+                                      if (!hasNext) {
+                                        provider.checkDomain(
+                                          _createTempConfig(),
+                                          _domainController.text,
+                                        );
+                                      }
+                                    },
+                                    child: _buildTextField(
+                                      _domainController,
+                                      'Domain',
+                                      'api.example.com',
+                                      verificationState:
+                                          provider.domainVerificationState,
+                                      verificationMessage:
+                                          provider.domainVerificationState == 3
+                                          ? 'Domain config exists'
+                                          : (provider.domainVerificationState ==
+                                                    2
+                                                ? 'Domain available'
+                                                : null),
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 4,
-                                    children: _runningApps
-                                        .map(
-                                          (app) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green.withValues(
-                                                alpha: 0.1,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              border: Border.all(
-                                                color: Colors.green.withValues(
-                                                  alpha: 0.3,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Text(
-                                              app,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.greenAccent,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
+                                  _buildTextField(
+                                    _portController,
+                                    'App Port',
+                                    '5001',
                                   ),
-                                  const SizedBox(height: 12),
-                                ],
-                                if (_activeSites.isNotEmpty) ...[
-                                  Text(
-                                    'Active Nginx Sites:',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
+                                  Focus(
+                                    onFocusChange: (hasNext) {
+                                      if (!hasNext) {
+                                        provider.checkApp(
+                                          _createTempConfig(),
+                                          _appNameController.text,
+                                        );
+                                      }
+                                    },
+                                    child: _buildTextField(
+                                      _appNameController,
+                                      'App Name (PM2)',
+                                      'backend',
+                                      verificationState:
+                                          provider.appVerificationState,
+                                      verificationMessage:
+                                          provider.appVerificationState == 3
+                                          ? 'App already running (Update)'
+                                          : (provider.appVerificationState == 2
+                                                ? 'App name available'
+                                                : null),
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 4,
-                                    children: _activeSites
-                                        .map(
-                                          (site) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.withValues(
-                                                alpha: 0.1,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              border: Border.all(
-                                                color: Colors.blue.withValues(
-                                                  alpha: 0.3,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Text(
-                                              site,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.lightBlueAccent,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
+                                  _buildTextField(
+                                    _pathOnServerController,
+                                    'Server Path',
+                                    '/var/www/backend',
                                   ),
-                                ],
+                                  _buildTextField(
+                                    _nginxConfController,
+                                    'NGINX Config Path',
+                                    '/etc/nginx/sites-enabled/default',
+                                  ),
+                                ]),
+
+                                _buildSectionHeader(
+                                  'Git Credentials (Optional)',
+                                  Icons.lock_outline,
+                                ),
+                                _buildCardLayout([
+                                  _buildTextField(
+                                    _gitUsernameController,
+                                    'Git Username',
+                                    'Username',
+                                  ),
+                                  _buildTextField(
+                                    _gitTokenController,
+                                    'Git Token',
+                                    'Token',
+                                    isPassword: true,
+                                  ),
+                                ]),
+
+                                _buildSectionHeader(
+                                  'Commands',
+                                  Icons.terminal_outlined,
+                                ),
+                                _buildCardLayout([
+                                  _buildTextField(
+                                    _installCommandController,
+                                    'Install Command',
+                                    'npm install',
+                                  ),
+                                  _buildTextField(
+                                    _startCommandController,
+                                    'Start Command',
+                                    'pm2 start...',
+                                  ),
+                                ]),
+
+                                _buildSectionHeader(
+                                  'SSL Configuration',
+                                  Icons.security,
+                                ),
+                                _buildCardLayout([
+                                  _buildSwitch(
+                                    'Enable SSL (Certbot)',
+                                    provider.enableSSL,
+                                    (val) => provider.setEnableSSL(val),
+                                  ),
+                                  if (provider.enableSSL)
+                                    _buildTextField(
+                                      _sslEmailController,
+                                      'SSL Email',
+                                      'email@example.com',
+                                    ),
+                                ]),
+
+                                const SizedBox(height: 32),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: ElevatedButton(
+                                    onPressed: () => _save(provider),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.black,
+                                      textStyle: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    child: const Text('Save Configuration'),
+                                  ),
+                                ),
                               ],
-                            ),
+                              const SizedBox(height: 48),
+                            ],
                           ),
-
-                        if (_isVerified) ...[
-                          _buildSectionHeader(
-                            'General Information',
-                            Icons.info_outline,
-                          ),
-                          _buildCardLayout([
-                            _buildTextField(
-                              _nameController,
-                              'Client Name',
-                              'My Website',
-                            ),
-                            _buildDeploymentTypeDropdown(),
-                          ]),
-
-                          _buildSectionHeader(
-                            'Deployment Settings',
-                            Icons.settings_outlined,
-                          ),
-                          _buildCardLayout([
-                            _buildTextField(
-                              _repoController,
-                              'Git Repository',
-                              'git@github.com:user/repo.git',
-                            ),
-                            _buildTextField(
-                              _branchController,
-                              'Branch',
-                              'main',
-                            ),
-                            Focus(
-                              onFocusChange: (hasNext) {
-                                if (!hasNext) _checkDomain();
-                              },
-                              child: _buildTextField(
-                                _domainController,
-                                'Domain',
-                                'api.example.com',
-                                verificationState: _domainVerificationState,
-                                verificationMessage:
-                                    _domainVerificationState == 3
-                                    ? 'Domain config exists'
-                                    : (_domainVerificationState == 2
-                                          ? 'Domain available'
-                                          : null),
-                              ),
-                            ),
-                            _buildTextField(
-                              _portController,
-                              'App Port',
-                              '5001',
-                            ),
-                            Focus(
-                              onFocusChange: (hasNext) {
-                                if (!hasNext) _checkApp();
-                              },
-                              child: _buildTextField(
-                                _appNameController,
-                                'App Name (PM2)',
-                                'backend',
-                                verificationState: _appVerificationState,
-                                verificationMessage: _appVerificationState == 3
-                                    ? 'App already running (Update)'
-                                    : (_appVerificationState == 2
-                                          ? 'App name available'
-                                          : null),
-                              ),
-                            ),
-                            _buildTextField(
-                              _pathOnServerController,
-                              'Server Path',
-                              '/var/www/backend',
-                            ),
-                            _buildTextField(
-                              _nginxConfController,
-                              'NGINX Config Path',
-                              '/etc/nginx/sites-enabled/default',
-                            ),
-                          ]),
-
-                          _buildSectionHeader(
-                            'Git Credentials (Optional)',
-                            Icons.lock_outline,
-                          ),
-                          _buildCardLayout([
-                            _buildTextField(
-                              _gitUsernameController,
-                              'Git Username',
-                              'Username',
-                            ),
-                            _buildTextField(
-                              _gitTokenController,
-                              'Git Token',
-                              'Token',
-                              isPassword: true,
-                            ),
-                          ]),
-
-                          _buildSectionHeader(
-                            'Commands',
-                            Icons.terminal_outlined,
-                          ),
-                          _buildCardLayout([
-                            _buildTextField(
-                              _installCommandController,
-                              'Install Command',
-                              'npm install',
-                            ),
-                            _buildTextField(
-                              _startCommandController,
-                              'Start Command',
-                              'pm2 start...',
-                            ),
-                          ]),
-
-                          _buildSectionHeader(
-                            'SSL Configuration',
-                            Icons.security,
-                          ),
-                          _buildCardLayout([
-                            _buildSwitch('Enable SSL (Certbot)', _enableSSL, (
-                              val,
-                            ) {
-                              setState(() {
-                                _enableSSL = val;
-                              });
-                            }),
-                            if (_enableSSL)
-                              _buildTextField(
-                                _sslEmailController,
-                                'SSL Email',
-                                'email@example.com',
-                              ),
-                          ]),
-
-                          const SizedBox(height: 32),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: ElevatedButton(
-                              onPressed: _save,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.black,
-                                textStyle: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              child: const Text('Save Configuration'),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 48),
-                      ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+                _buildResizeHandle(provider, isLeft: false),
+                _buildTerminalView(provider),
+              ],
             ),
-          ),
-          _buildResizeHandle(isLeft: false),
-          _buildTerminalView(),
-        ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildResizeHandle({required bool isLeft}) {
-    final isVisible = isLeft ? _isSidebarVisible : _isTerminalVisible;
+  Widget _buildResizeHandle(
+    EditClientProvider provider, {
+    required bool isLeft,
+  }) {
+    final isVisible = isLeft
+        ? provider.isSidebarVisible
+        : provider.isTerminalVisible;
     if (!isVisible) return const SizedBox();
 
     return MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
         onHorizontalDragUpdate: (details) {
-          setState(() {
-            if (isLeft) {
-              _explorerWidth += details.delta.dx;
-              if (_explorerWidth < 200) _explorerWidth = 200;
-              if (_explorerWidth > MediaQuery.of(context).size.width * 0.4) {
-                _explorerWidth = MediaQuery.of(context).size.width * 0.4;
-              }
-            } else {
-              _terminalWidth -= details.delta.dx;
-              if (_terminalWidth < 200) _terminalWidth = 200;
-              if (_terminalWidth > MediaQuery.of(context).size.width * 0.4) {
-                _terminalWidth = MediaQuery.of(context).size.width * 0.4;
-              }
-            }
-          });
+          final maxWidth = MediaQuery.of(context).size.width;
+          if (isLeft) {
+            provider.updateExplorerWidth(details.delta.dx, maxWidth);
+          } else {
+            provider.updateTerminalWidth(details.delta.dx, maxWidth);
+          }
         },
         child: Container(
-          width: 4,
+          width: 8,
           color: Colors.transparent,
-          height: double.infinity,
+          child: Center(
+            child: Container(
+              width: 1,
+              height: double.infinity,
+              color: Colors.white.withValues(alpha: 0.05),
+            ),
+          ),
         ),
       ),
     );
@@ -830,11 +688,11 @@ class _EditClientScreenState extends State<EditClientScreen> {
     );
   }
 
-  Widget _buildDeploymentTypeDropdown() {
+  Widget _buildDeploymentTypeDropdown(EditClientProvider provider) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: DropdownButtonFormField<String>(
-        initialValue: _deploymentType,
+        value: provider.deploymentType,
         decoration: InputDecoration(
           labelText: 'Deployment Type',
           filled: true,
@@ -864,10 +722,8 @@ class _EditClientScreenState extends State<EditClientScreen> {
         ],
         onChanged: (value) {
           if (value != null) {
-            setState(() {
-              _deploymentType = value;
-              _updateDefaultsForType(value);
-            });
+            provider.setDeploymentType(value);
+            _updateDefaultsForType(value);
           }
         },
       ),
@@ -977,11 +833,11 @@ class _EditClientScreenState extends State<EditClientScreen> {
     );
   }
 
-  Widget _buildExplorerSidebar() {
+  Widget _buildExplorerSidebar(EditClientProvider provider) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOutCubic,
-      width: _isSidebarVisible ? _explorerWidth : 36,
+      width: provider.isSidebarVisible ? provider.explorerWidth : 36,
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         border: Border(
@@ -992,23 +848,22 @@ class _EditClientScreenState extends State<EditClientScreen> {
         children: [
           // Header Toggle
           InkWell(
-            onTap: () => setState(() => _isSidebarVisible = !_isSidebarVisible),
+            onTap: () => provider.toggleSidebar(),
             child: Container(
               height: 48,
-              // expended width
-              // width: _isSidebarVisible ? 280 : 36,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               color: Colors.black.withValues(alpha: 0.2),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const NeverScrollableScrollPhysics(),
                 child: SizedBox(
-                  // width will be expeneded acoordingly
-                  width: _isSidebarVisible ? 280 : 20,
+                  width: provider.isSidebarVisible
+                      ? (provider.explorerWidth - 16)
+                      : 20,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      if (_isSidebarVisible) ...[
+                      if (provider.isSidebarVisible) ...[
                         const Icon(
                           Icons.explore,
                           size: 16,
@@ -1029,14 +884,15 @@ class _EditClientScreenState extends State<EditClientScreen> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.refresh, size: 16),
-                          onPressed: _refreshServerState,
+                          onPressed: () =>
+                              provider.refreshServerState(_createTempConfig()),
                           tooltip: 'Refresh',
                           constraints: const BoxConstraints(),
                           padding: EdgeInsets.zero,
                         ),
                       ],
                       Icon(
-                        _isSidebarVisible
+                        provider.isSidebarVisible
                             ? Icons.chevron_left
                             : Icons.chevron_right,
                         color: Colors.white.withValues(alpha: 0.5),
@@ -1049,30 +905,30 @@ class _EditClientScreenState extends State<EditClientScreen> {
             ),
           ),
 
-          if (_isSidebarVisible)
+          if (provider.isSidebarVisible)
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 200) return const SizedBox();
-                  return _isVerified
+                  return provider.isVerified
                       ? ListView(
                           padding: const EdgeInsets.all(12),
                           children: [
                             _buildExplorerSection(
                               'PM2 APPS',
                               Icons.dns,
-                              _runningApps,
-                              _selectApp,
-                              _deleteApp,
+                              provider.runningApps,
+                              (name) => _selectApp(provider, name),
+                              (name) => _deleteApp(provider, name),
                               Colors.greenAccent,
                             ),
                             const SizedBox(height: 20),
                             _buildExplorerSection(
                               'NGINX SITES',
                               Icons.web,
-                              _activeSites,
-                              _selectSite,
-                              _deleteSite,
+                              provider.activeSites,
+                              (name) => _selectSite(provider, name),
+                              (name) => _deleteSite(provider, name),
                               Colors.blueAccent,
                             ),
                           ],
@@ -1096,7 +952,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
           else
             Expanded(
               child: InkWell(
-                onTap: () => setState(() => _isSidebarVisible = true),
+                onTap: () => provider.toggleSidebar(),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1238,13 +1094,13 @@ class _EditClientScreenState extends State<EditClientScreen> {
     );
   }
 
-  Widget _buildTerminalView() {
+  Widget _buildTerminalView(EditClientProvider provider) {
+    final commandController = TextEditingController();
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOutCubic,
-      width: _isTerminalVisible
-          ? _terminalWidth
-          : 36, // Collapsed width for toggle bar
+      width: provider.isTerminalVisible ? provider.terminalWidth : 36,
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         border: Border(
@@ -1260,13 +1116,9 @@ class _EditClientScreenState extends State<EditClientScreen> {
       ),
       child: Column(
         children: [
-          // Header / Toggle Bar
+          // Header
           InkWell(
-            onTap: () {
-              setState(() {
-                _isTerminalVisible = !_isTerminalVisible;
-              });
-            },
+            onTap: () => provider.toggleTerminal(),
             child: Container(
               height: 48,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1275,18 +1127,19 @@ class _EditClientScreenState extends State<EditClientScreen> {
                 scrollDirection: Axis.horizontal,
                 physics: const NeverScrollableScrollPhysics(),
                 child: SizedBox(
-                  width: _isTerminalVisible ? 380 : 20,
+                  width: provider.isTerminalVisible
+                      ? (provider.terminalWidth - 16)
+                      : 20,
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _isTerminalVisible
+                        provider.isTerminalVisible
                             ? Icons.chevron_right
                             : Icons.chevron_left,
                         color: Colors.white.withValues(alpha: 0.5),
                         size: 16,
                       ),
-                      if (_isTerminalVisible) ...[
+                      if (provider.isTerminalVisible) ...[
                         const SizedBox(width: 8),
                         const Icon(
                           Icons.terminal,
@@ -1296,17 +1149,27 @@ class _EditClientScreenState extends State<EditClientScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Terminal Output',
+                            'Terminal',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w500,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         IconButton(
+                          icon: const Icon(Icons.copy_all, size: 16),
+                          color: Colors.white.withValues(alpha: 0.5),
+                          onPressed: () => provider.copyLogsToClipboard(),
+                          tooltip: 'Copy All',
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
                           icon: const Icon(Icons.clear_all, size: 16),
                           color: Colors.white.withValues(alpha: 0.5),
-                          onPressed: () => setState(() => _logs.clear()),
+                          onPressed: () => provider.clearLogs(),
                           tooltip: 'Clear Logs',
                           constraints: const BoxConstraints(),
                           padding: EdgeInsets.zero,
@@ -1320,42 +1183,154 @@ class _EditClientScreenState extends State<EditClientScreen> {
           ),
 
           // Terminal Body
-          if (_isTerminalVisible)
+          if (provider.isTerminalVisible)
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 200) return const SizedBox();
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    color: const Color(0xFF1E1E1E),
-                    child: ListView.builder(
-                      controller: _logScrollController,
-                      itemCount: _logs.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: SelectableText(
-                            // Make text copyable
-                            _logs[index],
-                            style: const TextStyle(
-                              fontFamily: 'Consolas',
-                              fontSize: 12,
-                              color: Color(0xFFCCCCCC),
+                  return Column(
+                    children: [
+                      // Logs Display
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          color: const Color(0xFF1E1E1E),
+                          child: provider.logs.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'Terminal ready. Type a command below.',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      fontSize: 12,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  controller: provider.logScrollController,
+                                  itemCount: provider.logs.length,
+                                  itemBuilder: (context, index) {
+                                    final log = provider.logs[index];
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 2),
+                                      child: SelectableText.rich(
+                                        TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text:
+                                                  '[${log.formattedTimestamp}] ',
+                                              style: TextStyle(
+                                                fontFamily: 'Consolas',
+                                                fontSize: 11,
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.4,
+                                                ),
+                                              ),
+                                            ),
+                                            TextSpan(
+                                              text: log.message,
+                                              style: TextStyle(
+                                                fontFamily: 'Consolas',
+                                                fontSize: 12,
+                                                color: log.color,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ),
+
+                      // Command Input
+                      if (provider.isVerified)
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            border: Border(
+                              top: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.1),
+                              ),
                             ),
                           ),
-                        );
-                      },
-                    ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.chevron_right,
+                                size: 16,
+                                color: Colors.greenAccent.withValues(
+                                  alpha: 0.7,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: commandController,
+                                  style: const TextStyle(
+                                    fontFamily: 'Consolas',
+                                    fontSize: 12,
+                                    color: Color(0xFFCCCCCC),
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter command...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      fontFamily: 'Consolas',
+                                    ),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  onSubmitted: (cmd) {
+                                    if (cmd.trim().isNotEmpty) {
+                                      provider.executeCommand(
+                                        _createTempConfig(),
+                                        cmd,
+                                      );
+                                      commandController.clear();
+                                    }
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.send, size: 16),
+                                color: Colors.greenAccent.withValues(
+                                  alpha: 0.7,
+                                ),
+                                onPressed: () {
+                                  final cmd = commandController.text;
+                                  if (cmd.trim().isNotEmpty) {
+                                    provider.executeCommand(
+                                      _createTempConfig(),
+                                      cmd,
+                                    );
+                                    commandController.clear();
+                                  }
+                                },
+                                tooltip: 'Execute',
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(4),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   );
                 },
               ),
             )
           else
-            // Vertical Toggle Strip when collapsed
             Expanded(
               child: InkWell(
-                onTap: () => setState(() => _isTerminalVisible = true),
+                onTap: () => provider.setTerminalVisible(true),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
